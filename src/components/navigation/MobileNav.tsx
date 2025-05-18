@@ -1,12 +1,19 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Home, Search, List, Tv, Film } from 'lucide-react';
+import { useUIStore } from '../../stores/uiStore';
 
 const MobileNav = () => {
   const location = useLocation();
+  const { isVideoPlaying } = useUIStore();
   
   const isActive = (path: string) => {
     return location.pathname === path || location.pathname.startsWith(path);
   };
+
+  // Hide the navigation when video is playing
+  if (isVideoPlaying) {
+    return null;
+  }
   
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-black border-t border-netflix-gray z-50 shadow-lg max-w-full overflow-x-hidden">
