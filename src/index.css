@@ -1,0 +1,230 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --netflix-red: #E50914;
+  --netflix-black: #000000;
+  --netflix-dark: #141414;
+  --netflix-gray: #808080;
+  --netflix-light-gray: #e5e5e5;
+  --netflix-white: #FFFFFF;
+}
+
+body {
+  background-color: var(--netflix-dark);
+  color: var(--netflix-white);
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+/* Hide scrollbars but keep functionality */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+@layer components {
+  .netflix-button {
+    @apply text-white font-medium py-2 px-6 rounded transition-all;
+    background-color: #E50914;
+  }
+  .netflix-button:hover {
+    background-color: #f40612;
+  }
+  
+  .netflix-input {
+    @apply bg-[#333] text-white p-4 rounded border border-[#808080] focus:border-white outline-none w-full;
+  }
+
+  .netflix-card {
+    @apply relative overflow-hidden rounded transition-all duration-300 ease-in-out;
+  }
+  
+  .netflix-card:hover {
+    @apply z-10 scale-110 shadow-xl;
+  }
+
+  .row-container {
+    @apply px-4 md:px-16;
+  }
+  
+  .row-title {
+    @apply text-xl md:text-2xl font-bold text-white py-4;
+  }
+  
+  .netflix-title {
+    @apply text-2xl md:text-3xl font-bold text-netflix-white;
+  }
+  
+  .netflix-subtitle {
+    @apply text-lg md:text-xl text-gray-400;
+  }
+  
+  .netflix-text {
+    @apply text-netflix-white;
+  }
+  
+  .netflix-link {
+    @apply text-netflix-red hover:text-netflix-red/80 transition-colors;
+  }
+  
+  .netflix-badge {
+    @apply bg-netflix-red text-netflix-white text-xs font-bold px-2 py-1 rounded;
+  }
+  
+  .netflix-tag {
+    @apply bg-netflix-dark text-netflix-white text-sm px-3 py-1 rounded-full;
+  }
+  
+  .netflix-divider {
+    @apply border-t border-gray-800 my-4;
+  }
+  
+  .netflix-overlay {
+    @apply absolute inset-0 bg-gradient-to-t from-netflix-black to-transparent;
+  }
+  
+  .netflix-scrollbar {
+    @apply scrollbar-thin scrollbar-thumb-netflix-red scrollbar-track-netflix-dark;
+  }
+  
+  .netflix-transition {
+    @apply transition-all duration-300 ease-in-out;
+  }
+  
+  .netflix-hover {
+    @apply hover:scale-105 hover:shadow-lg transition-all duration-300;
+  }
+  
+  .netflix-focus {
+    @apply focus:outline-none focus:ring-2 focus:ring-netflix-red focus:ring-opacity-50;
+  }
+  
+  .netflix-disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+  
+  .netflix-loading {
+    @apply animate-pulse bg-netflix-dark;
+  }
+  
+  .netflix-error {
+    @apply text-netflix-red text-sm;
+  }
+  
+  .netflix-success {
+    @apply text-green-500 text-sm;
+  }
+  
+  .netflix-warning {
+    @apply text-yellow-500 text-sm;
+  }
+  
+  .netflix-info {
+    @apply text-blue-500 text-sm;
+  }
+  
+  .netflix-tooltip {
+    @apply absolute bg-netflix-dark text-netflix-white px-2 py-1 rounded text-sm opacity-0 group-hover:opacity-100 transition-opacity;
+  }
+  
+  .netflix-dropdown {
+    @apply absolute bg-netflix-dark border border-gray-800 rounded shadow-lg py-2;
+  }
+  
+  .netflix-modal {
+    @apply fixed inset-0 bg-netflix-black bg-opacity-75 flex items-center justify-center;
+  }
+  
+  .netflix-toast {
+    @apply fixed bottom-4 right-4 bg-netflix-dark text-netflix-white px-4 py-2 rounded shadow-lg;
+  }
+  
+  .netflix-alert {
+    @apply bg-netflix-dark border border-gray-800 rounded p-4;
+  }
+  
+  .netflix-badge-dot {
+    @apply w-2 h-2 bg-netflix-red rounded-full;
+  }
+  
+  .netflix-badge-count {
+    @apply absolute -top-1 -right-1 bg-netflix-red text-netflix-white text-xs w-4 h-4 rounded-full flex items-center justify-center;
+  }
+  
+  .netflix-badge-status {
+    @apply w-2 h-2 rounded-full;
+  }
+  
+  .netflix-badge-status-online {
+    @apply bg-green-500;
+  }
+  
+  .netflix-badge-status-offline {
+    @apply bg-gray-500;
+  }
+  
+  .netflix-badge-status-busy {
+    @apply bg-netflix-red;
+  }
+  
+  .netflix-badge-status-away {
+    @apply bg-yellow-500;
+  }
+  
+  .netflix-badge-status-invisible {
+    @apply bg-gray-700;
+  }
+  
+  .netflix-badge-status-custom {
+    @apply bg-blue-500;
+  }
+  
+  .netflix-badge-status-custom-hover {
+    @apply hover:bg-blue-600;
+  }
+  
+  .netflix-badge-status-custom-focus {
+    @apply focus:bg-blue-600;
+  }
+  
+  .netflix-badge-status-custom-active {
+    @apply active:bg-blue-700;
+  }
+  
+  .netflix-badge-status-custom-disabled {
+    @apply disabled:bg-blue-300;
+  }
+  
+  .netflix-badge-status-custom-loading {
+    @apply loading:bg-blue-400;
+  }
+  
+  .netflix-badge-status-custom-error {
+    @apply error:bg-red-500;
+  }
+  
+  .netflix-badge-status-custom-success {
+    @apply success:bg-green-500;
+  }
+  
+  .netflix-badge-status-custom-warning {
+    @apply warning:bg-yellow-500;
+  }
+  
+  .netflix-badge-status-custom-info {
+    @apply info:bg-blue-500;
+  }
+  
+  .featured-gradient {
+    @apply absolute inset-0 bg-gradient-to-t to-transparent;
+    background-image: linear-gradient(to top, #141414 80%, transparent 100%);
+  }
+}

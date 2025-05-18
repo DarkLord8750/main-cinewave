@@ -1,0 +1,761 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import { supabase } from '../lib/supabase';
+
+export interface Content {
+  id: string;
+  title: string;
+  description: string;
+  type: 'movie' | 'series';
+  genre: string[];
+  releaseYear: number;
+  maturityRating: string;
+  posterImage: string;
+  backdropImage: string;
+  trailerUrl: string;
+  featured: boolean;
+  videoUrl480p?: string;
+  videoUrl720p?: string;
+  videoUrl1080p?: string;
+  videoUrl4k?: string;
+  seasons?: Season[];
+  cast: CastMember[];
+  createdAt: string;
+}
+
+export interface Season {
+  id: string;
+  seriesId: string;
+  seasonNumber: number;
+  episodes: Episode[];
+}
+
+export interface Episode {
+  id: string;
+  seasonId: string;
+  episodeNumber: number;
+  title: string;
+  duration: string;
+  videoUrl480p?: string;
+  videoUrl720p?: string;
+  videoUrl1080p?: string;
+  videoUrl4k?: string;
+}
+
+export interface CastMember {
+  id: string;
+  name: string;
+  photoUrl: string;
+  role: string;
+}
+
+interface ContentGenre {
+  genres: {
+    name: string;
+  };
+}
+
+interface ContentCastMember {
+  cast_members: {
+    id: string;
+    name: string;
+    photo_url: string;
+  };
+  role: string;
+  order: number;
+}
+
+interface ContentState {
+  contents: Content[];
+  featuredContents: Content[];
+  myList: string[];
+  isLoading: boolean;
+  error: string | null;
+  fetchContents: () => Promise<void>;
+  fetchFeaturedContents: () => Promise<void>;
+  getContentById: (id: string) => Content | undefined;
+  getContentsByGenre: (genre: string) => Content[];
+  searchContents: (query: string) => Content[];
+  addToMyList: (contentId: string) => void;
+  removeFromMyList: (contentId: string) => void;
+  isInMyList: (contentId: string) => boolean;
+  getMyListContents: () => Content[];
+  addContent: (content: Omit<Content, 'id' | 'cast' | 'createdAt'>) => Promise<Content>;
+  updateContent: (id: string, content: Partial<Content>) => Promise<void>;
+  deleteContent: (id: string) => Promise<void>;
+  addSeason: (contentId: string, season: Omit<Season, 'id' | 'episodes'>) => Promise<Season>;
+  updateSeason: (seasonId: string, season: Partial<Season>) => Promise<void>;
+  deleteSeason: (seasonId: string) => Promise<void>;
+  addEpisode: (seasonId: string, episode: Omit<Episode, 'id'>) => Promise<Episode>;
+  updateEpisode: (episodeId: string, episode: Partial<Episode>) => Promise<void>;
+  deleteEpisode: (episodeId: string) => Promise<void>;
+}
+
+export const useContentStore = create<ContentState>()(
+  persist(
+    (set, get) => ({
+      contents: [],
+      featuredContents: [],
+      myList: [],
+      isLoading: false,
+      error: null,
+
+      fetchContents: async () => {
+        set({ isLoading: true, error: null });
+        try {
+          const { data: contents, error: contentError } = await supabase
+            .from('content')
+            .select(`
+              *,
+              content_genres (
+                genres (name)
+              ),
+              content_cast (
+                cast_member_id,
+                role,
+                order,
+                cast_members (
+                  id,
+                  name,
+                  photo_url
+                )
+              ),
+              series (
+                id,
+                seasons (
+                  *,
+                  episodes (*)
+                )
+              )
+            `)
+            .order('created_at', { ascending: false });
+
+          if (contentError) {
+            throw new Error(contentError.message);
+          }
+
+          if (!contents) {
+            throw new Error('No content data received from the server');
+          }
+
+          const formattedContents = contents.map(content => ({
+            id: content.id,
+            title: content.title,
+            description: content.description,
+            type: content.type,
+            genre: content.content_genres?.map((cg: ContentGenre) => cg.genres.name) || [],
+            releaseYear: content.release_year,
+            maturityRating: content.maturity_rating,
+            posterImage: content.poster_image,
+            backdropImage: content.backdrop_image,
+            trailerUrl: content.trailer_url,
+            videoUrl480p: content.video_url_480p,
+            videoUrl720p: content.video_url_720p,
+            videoUrl1080p: content.video_url_1080p,
+            videoUrl4k: content.video_url_4k,
+            featured: content.featured,
+            seasons: (content.series?.[0]?.seasons || []).map(season => ({
+              id: season.id,
+              seriesId: season.series_id,
+              seasonNumber: season.season_number,
+              episodes: (season.episodes || []).map(episode => ({
+                id: episode.id,
+                seasonId: episode.season_id,
+                episodeNumber: episode.episode_number,
+                title: episode.title || '',
+                duration: episode.duration || '',
+                videoUrl480p: episode.video_url_480p,
+                videoUrl720p: episode.video_url_720p,
+                videoUrl1080p: episode.video_url_1080p,
+                videoUrl4k: episode.video_url_4k,
+              }))
+            })),
+            cast: content.content_cast
+              .sort((a: ContentCastMember, b: ContentCastMember) => a.order - b.order)
+              .map((cc: ContentCastMember) => ({
+                id: cc.cast_members.id,
+                name: cc.cast_members.name,
+                photoUrl: cc.cast_members.photo_url,
+                role: cc.role
+              })) || [],
+            createdAt: content.created_at
+          }));
+
+          set({ contents: formattedContents, isLoading: false, error: null });
+          await get().fetchFeaturedContents();
+        } catch (error) {
+          console.error('Error fetching content:', error);
+          set({ 
+            error: error instanceof Error ? error.message : 'Failed to fetch content', 
+            isLoading: false,
+            contents: [] // Clear contents on error
+          });
+        }
+      },
+
+      fetchFeaturedContents: async () => {
+        try {
+          const { data: featured, error } = await supabase
+            .from('content')
+            .select(`
+              *,
+              content_genres (
+                genres (name)
+              ),
+              content_cast (
+                cast_member_id,
+                role,
+                order,
+                cast_members (
+                  id,
+                  name,
+                  photo_url
+                )
+              )
+            `)
+            .eq('featured', true)
+            .order('featured_order', { ascending: true });
+
+          if (error) throw error;
+
+          const formattedFeatured = featured.map(content => ({
+            id: content.id,
+            title: content.title,
+            description: content.description,
+            type: content.type,
+            genre: content.content_genres.map((cg: ContentGenre) => cg.genres.name),
+            releaseYear: content.release_year,
+            maturityRating: content.maturity_rating,
+            posterImage: content.poster_image,
+            backdropImage: content.backdrop_image,
+            trailerUrl: content.trailer_url,
+            videoUrl480p: content.video_url_480p,
+            videoUrl720p: content.video_url_720p,
+            videoUrl1080p: content.video_url_1080p,
+            videoUrl4k: content.video_url_4k,
+            featured: content.featured,
+            cast: content.content_cast
+              .sort((a: ContentCastMember, b: ContentCastMember) => a.order - b.order)
+              .map((cc: ContentCastMember) => ({
+                id: cc.cast_members.id,
+                name: cc.cast_members.name,
+                photoUrl: cc.cast_members.photo_url,
+                role: cc.role
+              })),
+            createdAt: content.created_at
+          }));
+
+          set({ featuredContents: formattedFeatured });
+        } catch (error) {
+          console.error('Error fetching featured content:', error);
+        }
+      },
+
+      getContentById: (id: string) => {
+        return get().contents.find(content => content.id === id);
+      },
+
+      getContentsByGenre: (genre: string) => {
+        return get().contents.filter(content => 
+          content.genre.includes(genre)
+        );
+      },
+
+      searchContents: (query: string) => {
+        const searchQuery = query.toLowerCase().trim();
+        if (!searchQuery) return [];
+
+        return get().contents.filter(content => {
+          const titleMatch = content.title.toLowerCase().includes(searchQuery);
+          const descriptionMatch = content.description.toLowerCase().includes(searchQuery);
+          const genreMatch = content.genre.some(genre => 
+            genre.toLowerCase().includes(searchQuery)
+          );
+          
+          return titleMatch || descriptionMatch || genreMatch;
+        });
+      },
+
+      addToMyList: (contentId: string) => {
+        set(state => ({
+          myList: [...state.myList, contentId]
+        }));
+      },
+
+      removeFromMyList: (contentId: string) => {
+        set(state => ({
+          myList: state.myList.filter(id => id !== contentId)
+        }));
+      },
+
+      isInMyList: (contentId: string) => {
+        return get().myList.includes(contentId);
+      },
+
+      getMyListContents: () => {
+        return get().contents.filter(content => 
+          get().myList.includes(content.id)
+        );
+      },
+
+      addContent: async (content: Omit<Content, 'id' | 'cast' | 'createdAt'>) => {
+        try {
+          // Start a Supabase transaction
+          const { data: newContent, error: contentError } = await supabase
+            .from('content')
+            .insert({
+              title: content.title,
+              description: content.description,
+              type: content.type,
+              release_year: content.releaseYear,
+              maturity_rating: content.maturityRating,
+              poster_image: content.posterImage,
+              backdrop_image: content.backdropImage,
+              trailer_url: content.trailerUrl,
+              featured: content.featured,
+              ...(content.type === 'movie' ? {
+                video_url_480p: content.videoUrl480p,
+                video_url_720p: content.videoUrl720p,
+                video_url_1080p: content.videoUrl1080p,
+                video_url_4k: content.videoUrl4k
+              } : {})
+            })
+            .select()
+            .single();
+
+          if (contentError) throw contentError;
+          if (!newContent) throw new Error('Failed to create content');
+
+          // Handle series-specific data
+          if (content.type === 'series' && content.seasons && content.seasons.length > 0) {
+            // Create series record
+            let { data: series, error: seriesError } = await supabase
+              .from('series')
+              .insert({ content_id: newContent.id })
+              .select('id')
+              .single();
+
+            if ((seriesError && (seriesError.code === '23505' || seriesError.code === 'PGRST116')) || !series) {
+              // 23505 is unique_violation, PGRST116 is no rows returned
+              const { data: existingSeries, error: fetchError } = await supabase
+                .from('series')
+                .select('id')
+                .eq('content_id', newContent.id)
+                .single();
+              if (fetchError) throw fetchError;
+              if (!existingSeries) throw new Error('Series not found or could not be created.');
+              series = existingSeries;
+            } else if (seriesError) {
+              throw seriesError;
+            }
+
+            // Add seasons and episodes
+            for (const season of content.seasons) {
+              // Create season
+              const { data: createdSeason, error: seasonError } = await supabase
+                .from('seasons')
+                .insert({
+                  series_id: series.id,
+                  season_number: season.seasonNumber
+                })
+                .select()
+                .single();
+
+              if (seasonError) throw seasonError;
+              if (!createdSeason) throw new Error('Failed to create season');
+
+              // Add episodes for this season
+              if (season.episodes?.length > 0) {
+                const episodeInserts = season.episodes.map((episode) => ({
+                  season_id: createdSeason.id,
+                  episode_number: episode.episodeNumber,
+                  title: episode.title,
+                  duration: episode.duration,
+                  video_url_480p: episode.videoUrl480p,
+                  video_url_720p: episode.videoUrl720p,
+                  video_url_1080p: episode.videoUrl1080p,
+                  video_url_4k: episode.videoUrl4k
+                }));
+
+                const { error: episodesError } = await supabase
+                  .from('episodes')
+                  .insert(episodeInserts);
+
+                if (episodesError) throw episodesError;
+              }
+            }
+          }
+
+          // Add genres
+          if (content.genre?.length > 0) {
+            const { data: genres, error: genresError } = await supabase
+              .from('genres')
+              .select('id, name')
+              .in('name', content.genre);
+
+            if (genresError) throw genresError;
+            if (genres && genres.length > 0) {
+              const genreRelations = genres.map(genre => ({
+                content_id: newContent.id,
+                genre_id: genre.id
+              }));
+
+              const { error: genreRelationError } = await supabase
+                .from('content_genres')
+                .insert(genreRelations);
+
+              if (genreRelationError) throw genreRelationError;
+            }
+          }
+
+          // After inserting content, handle cast
+          if (content.cast && content.cast.length > 0) {
+            for (let i = 0; i < content.cast.length; i++) {
+              const member = content.cast[i];
+              const upsertObj =
+                member.id && member.id.length === 36
+                  ? { id: member.id, name: member.name, photo_url: member.photoUrl }
+                  : { name: member.name, photo_url: member.photoUrl };
+              const { data: castMember, error: castMemberError } = await supabase
+                .from('cast_members')
+                .upsert(upsertObj, { onConflict: 'name' })
+                .select()
+                .single();
+              if (castMemberError) throw castMemberError;
+              const { error: contentCastError } = await supabase
+                .from('content_cast')
+                .insert({
+                  content_id: newContent.id,
+                  cast_member_id: castMember.id,
+                  role: member.role,
+                  order: i
+                });
+              if (contentCastError) throw contentCastError;
+            }
+          }
+
+          // Refresh content list
+          await get().fetchContents();
+
+          // Return the newly created content
+          return {
+            ...newContent,
+            genre: content.genre || [],
+            seasons: content.seasons || [],
+            cast: content.cast || [],
+            createdAt: new Date().toISOString()
+          } as Content;
+        } catch (error) {
+          console.error('Error adding content:', error);
+          throw error;
+        }
+      },
+
+      updateContent: async (id: string, content: Partial<Content>) => {
+        try {
+          // Update main content
+          const { error: contentError } = await supabase
+            .from('content')
+            .update({
+              title: content.title,
+              description: content.description,
+              type: content.type,
+              release_year: content.releaseYear,
+              maturity_rating: content.maturityRating,
+              poster_image: content.posterImage,
+              backdrop_image: content.backdropImage,
+              trailer_url: content.trailerUrl,
+              featured: content.featured,
+              video_url_480p: content.videoUrl480p,
+              video_url_720p: content.videoUrl720p,
+              video_url_1080p: content.videoUrl1080p,
+              video_url_4k: content.videoUrl4k
+            })
+            .eq('id', id);
+
+          if (contentError) throw contentError;
+
+          // Update series data if applicable
+          if (content.type === 'series' && content.seasons) {
+            for (const season of content.seasons) {
+              if (season.id) {
+                // Update existing season
+                const { error: seasonError } = await supabase
+                  .from('seasons')
+                  .update({
+                    season_number: season.seasonNumber
+                  })
+                  .eq('id', season.id);
+
+                if (seasonError) throw seasonError;
+
+                // Update episodes
+                if (season.episodes) {
+                  for (const episode of season.episodes) {
+                    if (episode.id) {
+                      // Update existing episode
+                      const { error: episodeError } = await supabase
+                        .from('episodes')
+                        .update({
+                          episode_number: episode.episodeNumber,
+                          title: episode.title,
+                          duration: episode.duration,
+                          video_url_480p: episode.videoUrl480p,
+                          video_url_720p: episode.videoUrl720p,
+                          video_url_1080p: episode.videoUrl1080p,
+                          video_url_4k: episode.videoUrl4k
+                        })
+                        .eq('id', episode.id);
+
+                      if (episodeError) throw episodeError;
+                    } else {
+                      // Add new episode
+                      const { error: newEpisodeError } = await supabase
+                        .from('episodes')
+                        .insert({
+                          season_id: season.id,
+                          episode_number: episode.episodeNumber,
+                          title: episode.title,
+                          duration: episode.duration,
+                          video_url_480p: episode.videoUrl480p,
+                          video_url_720p: episode.videoUrl720p,
+                          video_url_1080p: episode.videoUrl1080p,
+                          video_url_4k: episode.videoUrl4k
+                        });
+
+                      if (newEpisodeError) throw newEpisodeError;
+                    }
+                  }
+                }
+              } else {
+                // Add new season
+                const { data: newSeason, error: newSeasonError } = await supabase
+                  .from('seasons')
+                  .insert({
+                    series_id: id,
+                    season_number: season.seasonNumber
+                  })
+                  .select()
+                  .single();
+
+                if (newSeasonError) throw newSeasonError;
+                if (!newSeason) throw new Error('Failed to create new season');
+
+                // Add episodes for new season
+                if (season.episodes?.length > 0) {
+                  const episodeInserts = season.episodes.map((episode) => ({
+                    season_id: newSeason.id,
+                    episode_number: episode.episodeNumber,
+                    title: episode.title,
+                    duration: episode.duration,
+                    video_url_480p: episode.videoUrl480p,
+                    video_url_720p: episode.videoUrl720p,
+                    video_url_1080p: episode.videoUrl1080p,
+                    video_url_4k: episode.videoUrl4k
+                  }));
+
+                  const { error: episodesError } = await supabase
+                    .from('episodes')
+                    .insert(episodeInserts);
+
+                  if (episodesError) throw episodesError;
+                }
+              }
+            }
+          }
+
+          // Update genres if provided
+          if (content.genre) {
+            // Remove existing genre relations
+            const { error: deleteGenresError } = await supabase
+              .from('content_genres')
+              .delete()
+              .eq('content_id', id);
+
+            if (deleteGenresError) throw deleteGenresError;
+
+            // Add new genre relations
+            const { data: genres, error: genresError } = await supabase
+              .from('genres')
+              .select('id, name')
+              .in('name', content.genre);
+
+            if (genresError) throw genresError;
+            if (genres && genres.length > 0) {
+              const genreRelations = genres.map(genre => ({
+                content_id: id,
+                genre_id: genre.id
+              }));
+
+              const { error: insertGenresError } = await supabase
+                .from('content_genres')
+                .insert(genreRelations);
+
+              if (insertGenresError) throw insertGenresError;
+            }
+          }
+
+          // Remove old cast links
+          await supabase.from('content_cast').delete().eq('content_id', id);
+          // Add new cast links
+          if (content.cast && content.cast.length > 0) {
+            for (let i = 0; i < content.cast.length; i++) {
+              const member = content.cast[i];
+              const upsertObj =
+                member.id && member.id.length === 36
+                  ? { id: member.id, name: member.name, photo_url: member.photoUrl }
+                  : { name: member.name, photo_url: member.photoUrl };
+              const { data: castMember, error: castMemberError } = await supabase
+                .from('cast_members')
+                .upsert(upsertObj, { onConflict: 'name' })
+                .select()
+                .single();
+              if (castMemberError) throw castMemberError;
+              const { error: contentCastError } = await supabase
+                .from('content_cast')
+                .insert({
+                  content_id: id,
+                  cast_member_id: castMember.id,
+                  role: member.role,
+                  order: i
+                });
+              if (contentCastError) throw contentCastError;
+            }
+          }
+
+          // Refresh content list
+          await get().fetchContents();
+        } catch (error) {
+          console.error('Error updating content:', error);
+          throw error;
+        }
+      },
+
+      deleteContent: async (id) => {
+        try {
+          const { error } = await supabase
+            .from('content')
+            .delete()
+            .eq('id', id);
+
+          if (error) throw error;
+          
+          set(state => ({
+            contents: state.contents.filter(content => content.id !== id)
+          }));
+        } catch (error) {
+          console.error('Error deleting content:', error);
+          throw error;
+        }
+      },
+
+      addSeason: async (contentId: string, season: Omit<Season, 'id' | 'episodes'>) => {
+        try {
+          const { data: newSeason, error } = await supabase.rpc('create_season', {
+            p_content_id: contentId,
+            p_season_number: season.seasonNumber
+          });
+          if (error) throw error;
+          await get().fetchContents();
+          return { id: newSeason, seasonNumber: season.seasonNumber, episodes: [] };
+        } catch (error) {
+          console.error('Error adding season:', error);
+          throw error;
+        }
+      },
+
+      updateSeason: async (seasonId, season) => {
+        try {
+          const { error } = await supabase
+            .from('seasons')
+            .update({
+              season_number: season.seasonNumber
+            })
+            .eq('id', seasonId);
+
+          if (error) throw error;
+          await get().fetchContents();
+        } catch (error) {
+          console.error('Error updating season:', error);
+          throw error;
+        }
+      },
+
+      deleteSeason: async (seasonId) => {
+        try {
+          const { error } = await supabase
+            .from('seasons')
+            .delete()
+            .eq('id', seasonId);
+
+          if (error) throw error;
+          await get().fetchContents();
+        } catch (error) {
+          console.error('Error deleting season:', error);
+          throw error;
+        }
+      },
+
+      addEpisode: async (seasonId: string, episode: Omit<Episode, 'id'>) => {
+        try {
+          const { data: newEpisode, error } = await supabase.rpc('create_episode', {
+            p_season_id: seasonId,
+            p_episode_number: episode.episodeNumber,
+            p_title: episode.title,
+            p_duration: episode.duration || '',
+            p_video_url_480p: episode.videoUrl480p,
+            p_video_url_720p: episode.videoUrl720p,
+            p_video_url_1080p: episode.videoUrl1080p,
+            p_video_url_4k: episode.videoUrl4k
+          });
+          if (error) throw error;
+          await get().fetchContents();
+          return { id: newEpisode, ...episode };
+        } catch (error) {
+          console.error('Error adding episode:', error);
+          throw error;
+        }
+      },
+
+      updateEpisode: async (episodeId: string, episode: Partial<Episode>) => {
+        try {
+          const { error } = await supabase
+            .from('episodes')
+            .update({
+              episode_number: episode.episodeNumber,
+              title: episode.title,
+              duration: episode.duration,
+              video_url_480p: episode.videoUrl480p,
+              video_url_720p: episode.videoUrl720p,
+              video_url_1080p: episode.videoUrl1080p,
+              video_url_4k: episode.videoUrl4k
+            })
+            .eq('id', episodeId);
+          if (error) throw error;
+          await get().fetchContents();
+        } catch (error) {
+          console.error('Error updating episode:', error);
+          throw error;
+        }
+      },
+
+      deleteEpisode: async (episodeId: string) => {
+        try {
+          const { error } = await supabase
+            .from('episodes')
+            .delete()
+            .eq('id', episodeId);
+          if (error) throw error;
+          await get().fetchContents();
+        } catch (error) {
+          console.error('Error deleting episode:', error);
+          throw error;
+        }
+      }
+    }),
+    {
+      name: 'cinewave-content-storage',
+      partialize: (state) => ({ myList: state.myList }),
+    }
+  )
+);
