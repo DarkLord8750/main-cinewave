@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Play, Pause, Volume2, VolumeX, Settings, ArrowLeft, Maximize, Minimize, ChevronLeft, ChevronRight, RotateCcw, RotateCw } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Settings, ArrowLeft, Maximize, Minimize, RotateCcw, RotateCw } from 'lucide-react';
 import { useWatchHistoryStore } from '../../stores/watchHistoryStore';
 import { useAuthStore } from '../../stores/authStore';
+import { useUIStore } from '../../stores/uiStore';
 
 interface VideoQuality {
   label: string;
@@ -35,7 +36,6 @@ interface VideoPlayerProps {
 
 const VideoPlayer = ({
   title,
-  description,
   videoUrls,
   contentId,
   onClose,
@@ -51,6 +51,15 @@ const VideoPlayer = ({
   const navigate = useNavigate();
   const { currentProfile } = useAuthStore();
   const { updateWatchTime } = useWatchHistoryStore();
+  const { setIsVideoPlaying } = useUIStore();
+
+  // Add effect to manage video playing state
+  useEffect(() => {
+    setIsVideoPlaying(true);
+    return () => {
+      setIsVideoPlaying(false);
+    };
+  }, [setIsVideoPlaying]);
 
   // Player State
   const [isPlaying, setIsPlaying] = useState(false);
@@ -62,6 +71,14 @@ const VideoPlayer = ({
   const [isFullscreen, setIsFullscreen] = useState(isFullScreen);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [currentQuality, setCurrentQuality] = useState<string>('720p');
+  const [isMobile] = useState(window.innerWidth <= 768);
+
+  // Touch state
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchStartY, setTouchStartY] = useState<number | null>(null);
+  const [touchStartTime, setTouchStartTime] = useState<number | null>(null);
+  const [lastTapTime, setLastTapTime] = useState(0);
+  const [seekAmount, setSeekAmount] = useState<number | null>(null);
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
@@ -109,11 +126,11 @@ const VideoPlayer = ({
 
     const handleTimeUpdate = () => {
       setCurrentTime(video.currentTime);
-      
+
       if (watchTimeUpdateRef.current) {
         clearTimeout(watchTimeUpdateRef.current);
       }
-      
+
       watchTimeUpdateRef.current = setTimeout(() => {
         if (currentProfile?.id) {
           const completed = video.currentTime >= video.duration * 0.9;
@@ -132,6 +149,11 @@ const VideoPlayer = ({
       if (currentProfile?.id) {
         updateWatchTime(currentProfile.id, contentId, Math.floor(video.duration), true);
       }
+
+      // Auto-play next episode if available
+      if (typeof currentEpisodeIndex === 'number' && onChangeEpisode && currentEpisodeIndex < (episodes?.length || 0) - 1) {
+        onChangeEpisode(currentEpisodeIndex + 1);
+      }
     };
 
     video.addEventListener('timeupdate', handleTimeUpdate);
@@ -146,7 +168,7 @@ const VideoPlayer = ({
         clearTimeout(watchTimeUpdateRef.current);
       }
     };
-  }, [contentId, updateWatchTime, currentProfile?.id]);
+  }, [contentId, updateWatchTime, currentProfile?.id, currentEpisodeIndex, episodes?.length, onChangeEpisode]);
 
   // Fullscreen change handler
   useEffect(() => {
@@ -186,7 +208,7 @@ const VideoPlayer = ({
 
   const handleVolumeChange = (value: number) => {
     if (!videoRef.current) return;
-    
+
     const newVolume = value / 100;
     videoRef.current.volume = newVolume;
     setVolume(newVolume);
@@ -195,7 +217,7 @@ const VideoPlayer = ({
 
   const toggleMute = () => {
     if (!videoRef.current) return;
-    
+
     if (isMuted) {
       videoRef.current.volume = volume;
       setIsMuted(false);
@@ -211,7 +233,7 @@ const VideoPlayer = ({
     const rect = progressRef.current.getBoundingClientRect();
     const percent = (e.clientX - rect.left) / rect.width;
     const newTime = percent * duration;
-    
+
     videoRef.current.currentTime = newTime;
     setCurrentTime(newTime);
   };
@@ -221,9 +243,9 @@ const VideoPlayer = ({
 
     const currentTime = videoRef.current.currentTime;
     const wasPlaying = !videoRef.current.paused;
-    
+
     setCurrentQuality(quality);
-    
+
     videoRef.current.addEventListener('loadeddata', () => {
       if (videoRef.current) {
         videoRef.current.currentTime = currentTime;
@@ -245,11 +267,10 @@ const VideoPlayer = ({
     try {
       if (!document.fullscreenElement) {
         await containerRef.current.requestFullscreen();
-        setIsFullscreen(true);
       } else {
         await document.exitFullscreen();
-        setIsFullscreen(false);
       }
+      setIsFullscreen(!isFullscreen);
     } catch (error) {
       console.error('Error attempting to toggle fullscreen:', error);
     }
@@ -257,9 +278,8 @@ const VideoPlayer = ({
 
   const showControlsTemporarily = () => {
     setShowControls(true);
-    clearTimeout(controlsTimeoutRef.current);
-    
     if (isPlaying) {
+      clearTimeout(controlsTimeoutRef.current);
       controlsTimeoutRef.current = setTimeout(() => {
         setShowControls(false);
         setShowQualityMenu(false);
@@ -271,7 +291,7 @@ const VideoPlayer = ({
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
-    
+
     if (hours > 0) {
       return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
@@ -279,8 +299,8 @@ const VideoPlayer = ({
   };
 
   const handleBack = async (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent event from bubbling to video click handler
-    
+    e.stopPropagation();
+
     try {
       if (document.fullscreenElement) {
         await document.exitFullscreen();
@@ -292,7 +312,6 @@ const VideoPlayer = ({
       }
     } catch (error) {
       console.error('Error handling back navigation:', error);
-      // Fallback to navigation even if fullscreen exit fails
       if (onClose) {
         onClose();
       } else {
@@ -301,13 +320,66 @@ const VideoPlayer = ({
     }
   };
 
-  // Add handlers for 10s forward/backward
   const seek = (seconds: number) => {
     if (!videoRef.current) return;
     let newTime = videoRef.current.currentTime + seconds;
     newTime = Math.max(0, Math.min(newTime, duration));
     videoRef.current.currentTime = newTime;
     setCurrentTime(newTime);
+    showControlsTemporarily();
+  };
+
+  // Mobile touch handlers
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return;
+
+    const touch = e.touches[0];
+    setTouchStartX(touch.clientX);
+    setTouchStartY(touch.clientY);
+    setTouchStartTime(Date.now());
+    showControlsTemporarily();
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartX || !touchStartY || !touchStartTime) return;
+
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+
+    // Only handle horizontal swipes
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
+      const seekTime = Math.round((deltaX / window.innerWidth) * 60);
+      setSeekAmount(seekTime);
+      e.preventDefault();
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartX || !touchStartY || !touchStartTime) return;
+
+    const touchEndTime = Date.now();
+    const timeDiff = touchEndTime - touchStartTime;
+
+    // Handle double tap
+    if (timeDiff < 300) {
+      const currentTime = Date.now();
+      if (currentTime - lastTapTime < 300) {
+        toggleFullscreen();
+        e.preventDefault();
+      }
+      setLastTapTime(currentTime);
+    }
+
+    // Handle seek
+    if (seekAmount) {
+      seek(seekAmount);
+    }
+
+    setTouchStartX(null);
+    setTouchStartY(null);
+    setTouchStartTime(null);
+    setSeekAmount(null);
   };
 
   return (
@@ -316,8 +388,11 @@ const VideoPlayer = ({
       className={`relative bg-black w-full h-full ${
         isFullscreen ? 'fixed inset-0 z-[9999]' : ''
       }`}
-      onMouseMove={showControlsTemporarily}
-      onMouseLeave={() => setShowControls(false)}
+      onMouseMove={!isMobile ? showControlsTemporarily : undefined}
+      onMouseLeave={() => !isMobile && setShowControls(false)}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
       {/* Video Container */}
       <div className="absolute inset-0 flex items-center justify-center bg-black">
@@ -328,60 +403,58 @@ const VideoPlayer = ({
           onClick={togglePlay}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
+          playsInline
         />
       </div>
 
-      {/* Title Bar */}
-      {showControls && (
-        <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent z-[10001]">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={handleBack}
-              className="text-white hover:text-cinewave-red transition-colors duration-200 cursor-pointer p-2 rounded-full hover:bg-black/20 z-[10002]"
-              aria-label="Go back"
-            >
-              <ArrowLeft size={24} />
-            </button>
-
-            <div className="text-white">
-              <h2 className="text-xl font-bold">{title}</h2>
-              {episodeInfo && (
-                <p className="text-sm opacity-90">
-                  S{episodeInfo.season} E{episodeInfo.episode} • {episodeInfo.title}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Controls Overlay */}
       {showControls && (
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent z-[10000]">
+          {/* Title Bar */}
+          <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent z-[10000]">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={handleBack}
+                className="text-white hover:text-cinewave-red transition-colors duration-200 cursor-pointer p-2 rounded-full hover:bg-black/20"
+                aria-label="Go back"
+              >
+                <ArrowLeft size={24} />
+              </button>
+
+              <div className="text-white">
+                <h2 className="text-xl font-bold">{title}</h2>
+                {episodeInfo && (
+                  <p className="text-sm opacity-90">
+                    S{episodeInfo.season} E{episodeInfo.episode} • {episodeInfo.title}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Center Play/Pause Button */}
-          <div className="absolute inset-0 flex items-center justify-center gap-x-6 md:gap-x-12">
+          <div className="absolute inset-0 flex items-center justify-center gap-x-12">
             <button
               onClick={() => seek(-10)}
-              className="relative text-white hover:text-cinewave-red transition px-2"
+              className="relative text-white hover:text-cinewave-red transition"
               aria-label="Rewind 10 seconds"
             >
-              <RotateCcw size={36} className="md:size-[48px]" />
-              <span className="absolute inset-0 flex items-center justify-center text-base md:text-lg font-bold text-white pointer-events-none">10</span>
+              <RotateCcw size={36} />
+              <span className="absolute inset-0 flex items-center justify-center text-lg font-bold">10</span>
             </button>
             <button
               onClick={togglePlay}
-              className="text-white transform hover:scale-110 transition px-2"
+              className="text-white transform hover:scale-110 transition"
               aria-label={isPlaying ? 'Pause' : 'Play'}
             >
-              {isPlaying ? <Pause size={36} className="md:size-[48px]" /> : <Play size={36} className="md:size-[48px]" />}
+              {isPlaying ? <Pause size={48} /> : <Play size={48} />}
             </button>
             <button
               onClick={() => seek(10)}
-              className="relative text-white hover:text-cinewave-red transition px-2"
+              className="relative text-white hover:text-cinewave-red transition"
               aria-label="Forward 10 seconds"
             >
-              <RotateCw size={36} className="md:size-[48px]" />
-              <span className="absolute inset-0 flex items-center justify-center text-base md:text-lg font-bold text-white pointer-events-none">10</span>
+              <RotateCw size={36} />
+              <span className="absolute inset-0 flex items-center justify-center text-lg font-bold">10</span>
             </button>
           </div>
 
@@ -404,22 +477,25 @@ const VideoPlayer = ({
             {/* Control Buttons */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                  <button
-                    onClick={toggleMute}
+                <button
+                  onClick={toggleMute}
                   className="text-white hover:text-cinewave-red transition"
-                    aria-label={isMuted ? 'Unmute' : 'Mute'}
-                  >
-                    {isMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
-                  </button>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={isMuted ? 0 : volume * 100}
-                    onChange={(e) => handleVolumeChange(parseInt(e.target.value))}
-                    className="w-24"
-                    aria-label="Volume"
-                  />
+                  aria-label={isMuted ? 'Unmute' : 'Mute'}
+                >
+                  {isMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
+                </button>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={isMuted ? 0 : volume * 100}
+                  onChange={(e) => handleVolumeChange(parseInt(e.target.value))}
+                  className="w-24"
+                  aria-label="Volume"
+                />
+                <span className="text-white text-sm">
+                  {formatTime(currentTime)} / {formatTime(duration)}
+                </span>
               </div>
 
               <div className="flex items-center gap-4">
@@ -452,7 +528,8 @@ const VideoPlayer = ({
                     )}
                   </div>
                 )}
-                {/* Next/Previous Episode Buttons */}
+
+                {/* Episode Navigation */}
                 {episodes && episodes.length > 0 && typeof currentEpisodeIndex === 'number' && onChangeEpisode && (
                   <div className="flex items-center gap-2 ml-4">
                     <button
@@ -471,6 +548,7 @@ const VideoPlayer = ({
                     </button>
                   </div>
                 )}
+
                 {/* Fullscreen Toggle */}
                 <button
                   onClick={toggleFullscreen}
