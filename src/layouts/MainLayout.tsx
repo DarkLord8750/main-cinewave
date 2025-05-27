@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import Navbar from '../components/navigation/Navbar';
@@ -7,6 +8,11 @@ import Footer from '../components/common/Footer';
 const MainLayout = () => {
   const { isAuthenticated, hasSelectedProfile } = useAuthStore();
   const location = useLocation();
+
+  // Scroll to top on every route change
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
 
   // If not authenticated, redirect to login
   if (!isAuthenticated) {
