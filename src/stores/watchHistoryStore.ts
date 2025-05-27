@@ -18,6 +18,7 @@ interface WatchHistoryState {
   updateWatchTime: (profileId: string, contentId: string, watchTime: number, completed?: boolean) => Promise<void>;
   getContinueWatching: () => WatchHistory[];
   clearError: () => void;
+  getWatchTime: (profileId: string, contentId: string) => Promise<number>;
 }
 
 export const useWatchHistoryStore = create<WatchHistoryState>((set, get) => ({
@@ -97,5 +98,23 @@ export const useWatchHistoryStore = create<WatchHistoryState>((set, get) => ({
     return history.filter(item => !item.completed);
   },
 
-  clearError: () => set({ error: null })
+  clearError: () => set({ error: null }),
+
+  getWatchTime: async (profileId: string, contentId: string): Promise<number> => {
+    if (!profileId || !contentId) return 0;
+    try {
+      const { data, error } = await supabase
+        .from('watch_history')
+        .select('watch_time')
+        .eq('profile_id', profileId)
+        .eq('content_id', contentId)
+        .order('last_watched', { ascending: false })
+        .limit(1)
+        .single();
+      if (error || !data) return 0;
+      return data.watch_time || 0;
+    } catch (e) {
+      return 0;
+    }
+  }
 }));
