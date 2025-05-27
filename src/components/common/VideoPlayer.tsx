@@ -198,6 +198,46 @@ const VideoPlayer = ({
     }
   }, [startTime, videoUrls, currentQuality]);
 
+  // Cross-browser fullscreen helpers
+  const requestFullscreen = (element: HTMLElement) => {
+    if (element.requestFullscreen) return element.requestFullscreen();
+    // @ts-ignore
+    if (element.webkitRequestFullscreen) return element.webkitRequestFullscreen();
+    // @ts-ignore
+    if (element.mozRequestFullScreen) return element.mozRequestFullScreen();
+    // @ts-ignore
+    if (element.msRequestFullscreen) return element.msRequestFullscreen();
+  };
+  const exitFullscreen = () => {
+    if (document.exitFullscreen) return document.exitFullscreen();
+    // @ts-ignore
+    if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
+    // @ts-ignore
+    if (document.mozCancelFullScreen) return document.mozCancelFullScreen();
+    // @ts-ignore
+    if (document.msExitFullscreen) return document.msExitFullscreen();
+  };
+
+  const toggleFullscreen = async () => {
+    if (!containerRef.current) return;
+    try {
+      if (!document.fullscreenElement &&
+          // @ts-ignore
+          !document.webkitFullscreenElement &&
+          // @ts-ignore
+          !document.mozFullScreenElement &&
+          // @ts-ignore
+          !document.msFullscreenElement) {
+        await requestFullscreen(containerRef.current);
+      } else {
+        await exitFullscreen();
+      }
+      setIsFullscreen(!isFullscreen);
+    } catch (error) {
+      console.error('Error attempting to toggle fullscreen:', error);
+    }
+  };
+
   // Player Controls
   const togglePlay = () => {
     if (!videoRef.current) return;
@@ -233,17 +273,6 @@ const VideoPlayer = ({
     }
   };
 
-  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!videoRef.current || !progressRef.current) return;
-
-    const rect = progressRef.current.getBoundingClientRect();
-    const percent = (e.clientX - rect.left) / rect.width;
-    const newTime = percent * duration;
-
-    videoRef.current.currentTime = newTime;
-    setCurrentTime(newTime);
-  };
-
   const handleQualityChange = (quality: string) => {
     if (!videoRef.current) return;
 
@@ -265,21 +294,6 @@ const VideoPlayer = ({
     }, { once: true });
 
     setShowQualityMenu(false);
-  };
-
-  const toggleFullscreen = async () => {
-    if (!containerRef.current) return;
-
-    try {
-      if (!document.fullscreenElement) {
-        await containerRef.current.requestFullscreen();
-      } else {
-        await document.exitFullscreen();
-      }
-      setIsFullscreen(!isFullscreen);
-    } catch (error) {
-      console.error('Error attempting to toggle fullscreen:', error);
-    }
   };
 
   const showControlsTemporarily = () => {
@@ -426,7 +440,6 @@ const VideoPlayer = ({
 
   // Double Tap and Draggable Seekbar Enhancements
   // --- Draggable Seekbar (Improved, YouTube-like) ---
-  const [dragging, setDragging] = useState(false);
   const [dragProgress, setDragProgress] = useState<number | null>(null);
 
   useEffect(() => {
@@ -444,9 +457,6 @@ const VideoPlayer = ({
   }, [duration]);
 
   const handleDocumentMouseUp = useCallback(() => {
-    setDragging(false);
-    document.body.style.userSelect = '';
-    setShowControls(true);
     setTimeout(() => setShowControls(false), 2000);
     setTimeout(() => setShowQualityMenu(false), 2000);
     setCurrentTime((prev) => {
@@ -463,7 +473,7 @@ const VideoPlayer = ({
 
   const handleProgressMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!progressRef.current) return;
-    setDragging(true);
+    setDragProgress(null);
     updateSeekFromEvent(e);
     setShowControls(true);
     document.body.style.userSelect = 'none';
@@ -483,9 +493,6 @@ const VideoPlayer = ({
   }, [duration]);
 
   const handleDocumentTouchEnd = useCallback(() => {
-    setDragging(false);
-    document.body.style.userSelect = '';
-    setShowControls(true);
     setTimeout(() => setShowControls(false), 2000);
     setTimeout(() => setShowQualityMenu(false), 2000);
     setCurrentTime((prev) => {
@@ -502,7 +509,7 @@ const VideoPlayer = ({
 
   const handleProgressTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     if (!progressRef.current) return;
-    setDragging(true);
+    setDragProgress(null);
     updateSeekFromTouchEvent(e);
     setShowControls(true);
     document.body.style.userSelect = 'none';
@@ -535,7 +542,6 @@ const VideoPlayer = ({
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onDoubleClick={toggleFullscreen}
-      onTouchEndCapture={isMobile ? handleMobileDoubleTap : undefined}
     >
       {/* Video Container */}
       <div className="absolute inset-0 flex items-center justify-center bg-black">
@@ -547,10 +553,15 @@ const VideoPlayer = ({
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
           playsInline
+          muted={isMobile} // For mobile autoplay compatibility
           tabIndex={0}
           aria-label="Video player"
           preload="auto"
-        />
+          controls={false}
+        >
+          <track kind="captions" />
+          Sorry, your browser does not support embedded videos. Please try a different browser.
+        </video>
         {isBuffering && (
           <div className="absolute inset-0 flex items-center justify-center z-50">
             <div className="w-12 h-12 border-4 border-white border-t-cinewave-red rounded-full animate-spin" />
