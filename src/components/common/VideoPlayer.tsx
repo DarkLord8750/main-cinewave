@@ -75,6 +75,9 @@ const VideoPlayer = ({
   const [isBuffering, setIsBuffering] = useState(false);
   const [userPaused, setUserPaused] = useState(false);
 
+  // Add this state to store the last watched time
+  const [lastWatchedTime, setLastWatchedTime] = useState<number | null>(null);
+
   // Touch state
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
@@ -191,12 +194,60 @@ const VideoPlayer = ({
     };
   }, []);
 
-  // Set initial playback position if startTime is provided
+  // Fetch last watched time on mount/contentId change
   useEffect(() => {
-    if (videoRef.current && typeof startTime === 'number' && startTime > 0) {
-      videoRef.current.currentTime = startTime;
+    let isMounted = true;
+    async function fetchLastWatched() {
+      if (currentProfile?.id && contentId) {
+        if (typeof useWatchHistoryStore.getState === 'function') {
+          const getWatchTime = useWatchHistoryStore.getState().getWatchTime;
+          if (typeof getWatchTime === 'function') {async function fetchLastWatched() {
+            if (currentProfile?.id && contentId) {
+              if (typeof useWatchHistoryStore.getState === 'function') {
+                const getWatchTime = useWatchHistoryStore.getState().getWatchTime;
+                const updateWatchTime = useWatchHistoryStore.getState().updateWatchTime;
+                if (typeof getWatchTime === 'function' && typeof updateWatchTime === 'function') {
+                  try {
+                    const time = await getWatchTime(currentProfile.id, contentId);
+                    if (isMounted && typeof time === 'number' && time > 0) {
+                      setLastWatchedTime(time);
+                      updateWatchTime(currentProfile.id, contentId, time);
+                    }
+                  } catch (error) {
+                    console.error('Error fetching last watched time:', error);
+                  }
+                }
+              }
+            }
+          }
+            const time = await getWatchTime(currentProfile.id, contentId);
+            if (isMounted && typeof time === 'number' && time > 0) {
+              setLastWatchedTime(time);
+            }
+          }
+        }
+      }
     }
-  }, [startTime, videoUrls, currentQuality]);
+    fetchLastWatched();
+    return () => { isMounted = false; };
+  }, [currentProfile?.id, contentId]);
+
+  // Set initial playback position if startTime or lastWatchedTime is provided, but only after metadata is loaded
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const setTime = () => {
+      if (typeof startTime === 'number' && startTime > 0) {
+        video.currentTime = startTime;
+      } else if (typeof lastWatchedTime === 'number' && lastWatchedTime > 0) {
+        video.currentTime = lastWatchedTime;
+      }
+    };
+    video.addEventListener('loadedmetadata', setTime, { once: true });
+    // If already loaded
+    if (video.readyState >= 1) setTime();
+    return () => video.removeEventListener('loadedmetadata', setTime);
+  }, [startTime, lastWatchedTime, videoUrls, currentQuality]);
 
   // Cross-browser fullscreen helpers
   const requestFullscreen = (element: HTMLElement) => {
@@ -247,6 +298,10 @@ const VideoPlayer = ({
       videoRef.current.pause();
     } else {
       setUserPaused(false);
+      // Always unmute and set volume on user play
+      videoRef.current.muted = false;
+      setIsMuted(false);
+      videoRef.current.volume = volume || 1;
       videoRef.current.play();
     }
     // Do not set isPlaying here; let onPlay/onPause handle it
@@ -259,16 +314,23 @@ const VideoPlayer = ({
     videoRef.current.volume = newVolume;
     setVolume(newVolume);
     setIsMuted(newVolume === 0);
+    // Always unmute on volume change if volume > 0
+    if (newVolume > 0) {
+      videoRef.current.muted = false;
+      setIsMuted(false);
+    }
   };
 
   const toggleMute = () => {
     if (!videoRef.current) return;
 
     if (isMuted) {
-      videoRef.current.volume = volume;
+      videoRef.current.volume = volume || 1;
+      videoRef.current.muted = false;
       setIsMuted(false);
     } else {
       videoRef.current.volume = 0;
+      videoRef.current.muted = true;
       setIsMuted(true);
     }
   };
@@ -542,6 +604,14 @@ const VideoPlayer = ({
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onDoubleClick={toggleFullscreen}
+      // Hide controls on single click/tap on the screen (not on controls)
+      onClick={(e) => {
+        // Only hide if controls are visible and click is not on a button or input
+        if (showControls && e.target === containerRef.current) {
+          setShowControls(false);
+          setShowQualityMenu(false);
+        }
+      }}
     >
       {/* Video Container */}
       <div className="absolute inset-0 flex items-center justify-center bg-black">
@@ -553,7 +623,7 @@ const VideoPlayer = ({
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
           playsInline
-          muted={isMobile} // For mobile autoplay compatibility
+          muted={isMuted} // Always use isMuted state
           tabIndex={0}
           aria-label="Video player"
           preload="auto"
@@ -656,6 +726,11 @@ const VideoPlayer = ({
                   onChange={(e) => handleVolumeChange(parseInt(e.target.value))}
                   className="w-24"
                   aria-label="Volume"
+                  // --- FIX: Prevent touch/mouse events from bubbling to progress bar ---
+                  onTouchStart={e => e.stopPropagation()}
+                  onTouchMove={e => e.stopPropagation()}
+                  onTouchEnd={e => e.stopPropagation()}
+                  onMouseDown={e => e.stopPropagation()}
                 />
                 <span className="text-white text-sm">
                   {formatTime(currentTime)} / {formatTime(duration)}
