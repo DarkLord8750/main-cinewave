@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Play, Pause, Volume2, VolumeX, Settings, ArrowLeft, Maximize, Minimize, RotateCcw, RotateCw } from 'lucide-react';
 import { useWatchHistoryStore } from '../../stores/watchHistoryStore';
@@ -72,6 +72,8 @@ const VideoPlayer = ({
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [currentQuality, setCurrentQuality] = useState<string>('720p');
   const [isMobile] = useState(window.innerWidth <= 768);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [userPaused, setUserPaused] = useState(false);
 
   // Touch state
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
@@ -86,6 +88,7 @@ const VideoPlayer = ({
   const progressRef = useRef<HTMLDivElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
   const watchTimeUpdateRef = useRef<NodeJS.Timeout>();
+  const dragProgressRef = useRef<number | null>(null);
 
   // Available video qualities
   const availableQualities: VideoQuality[] = Object.entries(videoUrls)
@@ -99,25 +102,25 @@ const VideoPlayer = ({
       return qualityOrder[a.value as keyof typeof qualityOrder] - qualityOrder[b.value as keyof typeof qualityOrder];
     });
 
-  // Initialize with best available quality
+  // Initialize with best available quality (prefer 720p if available)
   useEffect(() => {
     if (availableQualities.length > 0) {
-      const bestQuality = availableQualities[availableQualities.length - 1].value;
-      setCurrentQuality(bestQuality);
+      const has720p = availableQualities.find(q => q.value === '720p');
+      if (has720p) {
+        setCurrentQuality('720p');
+      } else {
+        const bestQuality = availableQualities[availableQualities.length - 1].value;
+        setCurrentQuality(bestQuality);
+      }
     }
   }, []);
 
   // Handle autoplay
   useEffect(() => {
-    if (autoPlay && videoRef.current) {
-      const playPromise = videoRef.current.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => setIsPlaying(true))
-          .catch(() => setIsPlaying(false));
-      }
+    if (autoPlay && videoRef.current && !userPaused) {
+      videoRef.current.play();
     }
-  }, [autoPlay, videoUrls, currentQuality]);
+  }, [autoPlay, videoUrls, currentQuality, userPaused]);
 
   // Video event listeners
   useEffect(() => {
@@ -126,11 +129,9 @@ const VideoPlayer = ({
 
     const handleTimeUpdate = () => {
       setCurrentTime(video.currentTime);
-
       if (watchTimeUpdateRef.current) {
         clearTimeout(watchTimeUpdateRef.current);
       }
-
       watchTimeUpdateRef.current = setTimeout(() => {
         if (currentProfile?.id) {
           const completed = video.currentTime >= video.duration * 0.9;
@@ -149,21 +150,29 @@ const VideoPlayer = ({
       if (currentProfile?.id) {
         updateWatchTime(currentProfile.id, contentId, Math.floor(video.duration), true);
       }
-
-      // Auto-play next episode if available
       if (typeof currentEpisodeIndex === 'number' && onChangeEpisode && currentEpisodeIndex < (episodes?.length || 0) - 1) {
         onChangeEpisode(currentEpisodeIndex + 1);
       }
     };
 
+    const handleWaiting = () => setIsBuffering(true);
+    const handlePlaying = () => setIsBuffering(false);
+    const handleCanPlay = () => setIsBuffering(false);
+
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('ended', handleEnded);
+    video.addEventListener('waiting', handleWaiting);
+    video.addEventListener('playing', handlePlaying);
+    video.addEventListener('canplay', handleCanPlay);
 
     return () => {
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       video.removeEventListener('ended', handleEnded);
+      video.removeEventListener('waiting', handleWaiting);
+      video.removeEventListener('playing', handlePlaying);
+      video.removeEventListener('canplay', handleCanPlay);
       if (watchTimeUpdateRef.current) {
         clearTimeout(watchTimeUpdateRef.current);
       }
@@ -194,16 +203,13 @@ const VideoPlayer = ({
     if (!videoRef.current) return;
 
     if (isPlaying) {
+      setUserPaused(true);
       videoRef.current.pause();
     } else {
-      const playPromise = videoRef.current.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => setIsPlaying(true))
-          .catch(() => setIsPlaying(false));
-      }
+      setUserPaused(false);
+      videoRef.current.play();
     }
-    setIsPlaying(!isPlaying);
+    // Do not set isPlaying here; let onPlay/onPause handle it
   };
 
   const handleVolumeChange = (value: number) => {
@@ -321,7 +327,7 @@ const VideoPlayer = ({
   };
 
   const seek = (seconds: number) => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || !duration || isNaN(duration) || duration === 0) return;
     let newTime = videoRef.current.currentTime + seconds;
     newTime = Math.max(0, Math.min(newTime, duration));
     videoRef.current.currentTime = newTime;
@@ -382,17 +388,154 @@ const VideoPlayer = ({
     setSeekAmount(null);
   };
 
+  // Keyboard and Accessibility Enhancements
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+      switch (e.key.toLowerCase()) {
+        case ' ':
+        case 'k':
+          e.preventDefault();
+          togglePlay();
+          break;
+        case 'arrowright':
+          seek(5);
+          break;
+        case 'arrowleft':
+          seek(-5);
+          break;
+        case 'f':
+          toggleFullscreen();
+          break;
+        case 'm':
+          toggleMute();
+          break;
+        case 'arrowup':
+          handleVolumeChange(Math.min(100, (isMuted ? 0 : volume * 100) + 5));
+          break;
+        case 'arrowdown':
+          handleVolumeChange(Math.max(0, (isMuted ? 0 : volume * 100) - 5));
+          break;
+        default:
+          break;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isMuted, volume, isPlaying]);
+
+  // Double Tap and Draggable Seekbar Enhancements
+  // --- Draggable Seekbar (Improved, YouTube-like) ---
+  const [dragging, setDragging] = useState(false);
+  const [dragProgress, setDragProgress] = useState<number | null>(null);
+
+  useEffect(() => {
+    dragProgressRef.current = dragProgress;
+  }, [dragProgress]);
+
+  // Mouse events
+  const handleDocumentMouseMove = useCallback((e: MouseEvent) => {
+    if (!progressRef.current) return;
+    const rect = progressRef.current.getBoundingClientRect();
+    const percent = (e.clientX - rect.left) / rect.width;
+    const newTime = Math.max(0, Math.min(duration, percent * duration));
+    setDragProgress(newTime);
+    setShowControls(true);
+  }, [duration]);
+
+  const handleDocumentMouseUp = useCallback(() => {
+    setDragging(false);
+    document.body.style.userSelect = '';
+    setShowControls(true);
+    setTimeout(() => setShowControls(false), 2000);
+    setTimeout(() => setShowQualityMenu(false), 2000);
+    setCurrentTime((prev) => {
+      const seekTime = dragProgressRef.current !== null ? dragProgressRef.current : prev;
+      if (videoRef.current) {
+        videoRef.current.currentTime = seekTime;
+      }
+      return seekTime;
+    });
+    setDragProgress(null);
+    window.removeEventListener('mousemove', handleDocumentMouseMove);
+    window.removeEventListener('mouseup', handleDocumentMouseUp);
+  }, [handleDocumentMouseMove]);
+
+  const handleProgressMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!progressRef.current) return;
+    setDragging(true);
+    updateSeekFromEvent(e);
+    setShowControls(true);
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', handleDocumentMouseMove);
+    window.addEventListener('mouseup', handleDocumentMouseUp);
+  };
+
+  // Touch events
+  const handleDocumentTouchMove = useCallback((e: TouchEvent) => {
+    if (!progressRef.current) return;
+    const touch = e.touches[0];
+    const rect = progressRef.current.getBoundingClientRect();
+    const percent = (touch.clientX - rect.left) / rect.width;
+    const newTime = Math.max(0, Math.min(duration, percent * duration));
+    setDragProgress(newTime);
+    setShowControls(true);
+  }, [duration]);
+
+  const handleDocumentTouchEnd = useCallback(() => {
+    setDragging(false);
+    document.body.style.userSelect = '';
+    setShowControls(true);
+    setTimeout(() => setShowControls(false), 2000);
+    setTimeout(() => setShowQualityMenu(false), 2000);
+    setCurrentTime((prev) => {
+      const seekTime = dragProgressRef.current !== null ? dragProgressRef.current : prev;
+      if (videoRef.current) {
+        videoRef.current.currentTime = seekTime;
+      }
+      return seekTime;
+    });
+    setDragProgress(null);
+    window.removeEventListener('touchmove', handleDocumentTouchMove);
+    window.removeEventListener('touchend', handleDocumentTouchEnd);
+  }, [handleDocumentTouchMove]);
+
+  const handleProgressTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!progressRef.current) return;
+    setDragging(true);
+    updateSeekFromTouchEvent(e);
+    setShowControls(true);
+    document.body.style.userSelect = 'none';
+    window.addEventListener('touchmove', handleDocumentTouchMove);
+    window.addEventListener('touchend', handleDocumentTouchEnd);
+  };
+  const updateSeekFromEvent = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!progressRef.current) return;
+    const rect = progressRef.current.getBoundingClientRect();
+    const percent = (e.clientX - rect.left) / rect.width;
+    const newTime = Math.max(0, Math.min(duration, percent * duration));
+    setDragProgress(newTime);
+  };
+  const updateSeekFromTouchEvent = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!progressRef.current) return;
+    const touch = e.touches[0];
+    const rect = progressRef.current.getBoundingClientRect();
+    const percent = (touch.clientX - rect.left) / rect.width;
+    const newTime = Math.max(0, Math.min(duration, percent * duration));
+    setDragProgress(newTime);
+  };
+
   return (
-    <div 
+    <div
       ref={containerRef}
-      className={`relative bg-black w-full h-full ${
-        isFullscreen ? 'fixed inset-0 z-[9999]' : ''
-      }`}
+      className={`relative bg-black w-full h-full ${isFullscreen ? 'fixed inset-0 z-[9999]' : ''}`}
       onMouseMove={!isMobile ? showControlsTemporarily : undefined}
       onMouseLeave={() => !isMobile && setShowControls(false)}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onDoubleClick={toggleFullscreen}
+      onTouchEndCapture={isMobile ? handleMobileDoubleTap : undefined}
     >
       {/* Video Container */}
       <div className="absolute inset-0 flex items-center justify-center bg-black">
@@ -404,7 +547,15 @@ const VideoPlayer = ({
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
           playsInline
+          tabIndex={0}
+          aria-label="Video player"
+          preload="auto"
         />
+        {isBuffering && (
+          <div className="absolute inset-0 flex items-center justify-center z-50">
+            <div className="w-12 h-12 border-4 border-white border-t-cinewave-red rounded-full animate-spin" />
+          </div>
+        )}
       </div>
 
       {showControls && (
@@ -461,16 +612,18 @@ const VideoPlayer = ({
           {/* Bottom Controls */}
           <div className="absolute bottom-0 left-0 right-0 p-4">
             {/* Progress Bar */}
-            <div 
+            <div
               ref={progressRef}
-              className="w-full h-1 bg-gray-600 mb-4 cursor-pointer group"
-              onClick={handleProgressClick}
+              className="w-full h-1 bg-gray-600 mb-4 cursor-pointer group relative"
+              onMouseDown={handleProgressMouseDown}
+              onTouchStart={handleProgressTouchStart}
+              style={{ touchAction: 'none' }}
             >
-              <div 
+              <div
                 className="h-full bg-cinewave-red relative group-hover:h-2 transition-all"
-                style={{ width: `${(currentTime / duration) * 100}%` }}
+                style={{ width: `${((dragProgress !== null ? dragProgress : currentTime) / duration) * 100}%` }}
               >
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-cinewave-red rounded-full opacity-0 group-hover:opacity-100" />
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-cinewave-red rounded-full opacity-0 group-hover:opacity-100 cursor-pointer" />
               </div>
             </div>
 
@@ -510,7 +663,7 @@ const VideoPlayer = ({
                       <Settings size={20} />
                       <span className="text-sm">{currentQuality === '4k' ? '4K' : currentQuality.toUpperCase()}</span>
                     </button>
-                    
+
                     {showQualityMenu && (
                       <div className="absolute bottom-full right-0 mb-2 bg-black/90 rounded-md overflow-hidden">
                         {availableQualities.map((quality) => (
