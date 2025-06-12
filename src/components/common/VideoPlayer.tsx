@@ -120,6 +120,9 @@ const VideoPlayer = ({
   // Add debounce ref for quality changes
   const qualityChangeTimeoutRef = useRef<NodeJS.Timeout>();
 
+  // Add state for tracking if we're interacting with controls
+  const [isInteractingWithControls, setIsInteractingWithControls] = useState(false);
+
   // Add effect to manage video playing state
   useEffect(() => {
     setIsVideoPlaying(true);
@@ -1229,8 +1232,9 @@ const VideoPlayer = ({
 
   // Modify click handler for controls with debounce
   const handleVideoClick = useCallback((e: React.MouseEvent) => {
-    // Only handle clicks directly on the container, not its children
-    if (e.target === containerRef.current) {
+    // Check if the click is on the video container itself
+    const target = e.target as HTMLElement;
+    if (target === containerRef.current || target === videoRef.current) {
       setShowControls(prev => !prev);
       setShowQualityMenu(false);
       setShowAudioMenu(false);
@@ -1239,7 +1243,7 @@ const VideoPlayer = ({
 
   // Add click handler for control buttons
   const handleControlClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent click from reaching container
+    e.stopPropagation();
   }, []);
 
   return (
@@ -1358,9 +1362,15 @@ const VideoPlayer = ({
       </div>
 
       {showControls && (
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent z-[10000]">
+        <div 
+          className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent z-[10000]"
+          onClick={handleControlClick}
+        >
           {/* Title Bar */}
-          <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent z-[10000]">
+          <div 
+            className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent z-[10000]"
+            onClick={handleControlClick}
+          >
             <div className="flex items-center gap-4">
               <button
                 onClick={(e) => {
@@ -1385,8 +1395,11 @@ const VideoPlayer = ({
             </div>
           </div>
 
-          {/* Center Play/Pause Button - Larger on mobile */}
-          <div className="absolute inset-0 flex items-center justify-center gap-x-12">
+          {/* Center Play/Pause Button */}
+          <div 
+            className="absolute inset-0 flex items-center justify-center gap-x-12"
+            onClick={handleControlClick}
+          >
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -1425,30 +1438,33 @@ const VideoPlayer = ({
             </button>
           </div>
 
-          {/* Bottom Controls - Mobile Optimized */}
-          <div className="absolute bottom-0 left-0 right-0 p-4">
-            {/* Progress Bar - Reduced margin */}
+          {/* Bottom Controls */}
+          <div 
+            className="absolute bottom-0 left-0 right-0 p-4"
+            onClick={handleControlClick}
+          >
+            {/* Progress Bar */}
             <div className="relative mb-2">
-            <div
-              ref={progressRef}
+              <div
+                ref={progressRef}
                 className={`w-full ${isMobile ? 'h-2' : 'h-1.5'} bg-gray-600/50 cursor-pointer group relative rounded-full overflow-hidden`}
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                handleProgressMouseDown(e);
-              }}
-              onTouchStart={(e) => {
-                e.stopPropagation();
-                handleProgressTouchStart(e);
-              }}
-              onMouseMove={(e) => {
-                e.stopPropagation();
-                handleProgressHover(e);
-              }}
-              onMouseLeave={() => {
-                setHoverPosition(null);
-              }}
-              style={{ touchAction: "none" }}
-            >
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  handleProgressMouseDown(e);
+                }}
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                  handleProgressTouchStart(e);
+                }}
+                onMouseMove={(e) => {
+                  e.stopPropagation();
+                  handleProgressHover(e);
+                }}
+                onMouseLeave={() => {
+                  setHoverPosition(null);
+                }}
+                style={{ touchAction: "none" }}
+              >
                 {/* Progress Background */}
                 <div className="absolute inset-0 bg-gray-600/30 group-hover:bg-gray-600/40 transition-colors" />
                 
@@ -1465,9 +1481,10 @@ const VideoPlayer = ({
               </div>
             </div>
 
-            {/* Control Buttons - Adjusted padding */}
-            <div className="flex items-center justify-between px-1" onClick={handleControlClick}>
+            {/* Control Buttons */}
+            <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-4">
+                {/* Volume Controls */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1483,66 +1500,16 @@ const VideoPlayer = ({
                   min="0"
                   max="100"
                   value={isMuted ? 0 : volume * 100}
-                  onChange={(e) => handleVolumeChange(parseInt(e.target.value))}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    handleVolumeChange(parseInt(e.target.value));
+                  }}
+                  onClick={(e) => e.stopPropagation()}
                   className={`${isMobile ? 'w-32' : 'w-24'}`}
                   aria-label="Volume"
-                  onTouchStart={(e) => e.stopPropagation()}
-                  onTouchMove={(e) => e.stopPropagation()}
-                  onTouchEnd={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => e.stopPropagation()}
                 />
-                <div className="flex items-center gap-1 text-white text-sm">
-                  <span className="font-medium">{formatTime(currentTime)}</span>
-                  <span className="text-gray-400">/</span>
-                  <span className="text-gray-400">{formatTime(duration)}</span>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-4">
-                {/* Audio Track Selector - Hidden in portrait mode on mobile */}
-                {audioTracks.length > 1 && (!isMobile || !isPortrait) && (
-                  <div className="relative z-[10002]">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowAudioMenu(!showAudioMenu);
-                      }}
-                      className={`text-white hover:text-cinewave-red transition flex items-center gap-1 p-2 ${
-                        isQualityChanging ? 'opacity-50 cursor-not-allowed' : ''
-                      }`}
-                      disabled={isQualityChanging}
-                      aria-label="Audio track settings"
-                    >
-                      <Headphones size={20} />
-                      <span className="text-sm">
-                        {audioTracks.find(track => track.id === currentAudioTrack)?.label || 
-                         (audioTracks.length > 0 ? audioTracks[0].label : 'Audio')}
-                      </span>
-                    </button>
-
-                    {showAudioMenu && (
-                      <div className="absolute bottom-full right-0 mb-2 bg-black/90 rounded-md overflow-hidden shadow-lg">
-                        {audioTracks.map((track) => (
-                          <button
-                            key={track.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleAudioTrackChange(track.id);
-                            }}
-                            disabled={isQualityChanging}
-                            className={`block w-full px-4 py-2 text-sm text-left hover:bg-cinewave-red transition ${
-                              currentAudioTrack === track.id ? "bg-cinewave-red" : ""
-                            } ${isQualityChanging ? 'opacity-50 cursor-not-allowed' : ''}`}
-                          >
-                            {track.label} {track.language !== 'unknown' ? `(${track.language})` : ''}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Quality Selector - Hidden in portrait mode on mobile */}
+                {/* Quality Selector */}
                 {availableQualities.length > 1 && (!isMobile || !isPortrait) && (
                   <div className="relative z-[10002]">
                     <button
@@ -1586,35 +1553,6 @@ const VideoPlayer = ({
                   </div>
                 )}
 
-                {/* Episode Navigation */}
-                {episodes &&
-                  episodes.length > 0 &&
-                  typeof currentEpisodeIndex === "number" &&
-                  onChangeEpisode && (
-                    <div className="flex items-center gap-2 ml-4">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onChangeEpisode(currentEpisodeIndex - 1);
-                        }}
-                        disabled={currentEpisodeIndex === 0}
-                        className="px-3 py-1 rounded bg-gray-700 text-white disabled:opacity-50"
-                      >
-                        Previous
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onChangeEpisode(currentEpisodeIndex + 1);
-                        }}
-                        disabled={currentEpisodeIndex === episodes.length - 1}
-                        className="px-3 py-1 rounded bg-gray-700 text-white disabled:opacity-50"
-                      >
-                        Next
-                      </button>
-                    </div>
-                  )}
-
                 {/* Fullscreen Toggle */}
                 <button
                   onClick={(e) => {
@@ -1624,11 +1562,7 @@ const VideoPlayer = ({
                   className="text-white hover:text-cinewave-red transition z-[10002] relative ml-4 p-2"
                   aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
                 >
-                  {isFullscreen ? (
-                    <Minimize size={24} />
-                  ) : (
-                    <Maximize size={24} />
-                  )}
+                  {isFullscreen ? <Minimize size={24} /> : <Maximize size={24} />}
                 </button>
               </div>
             </div>
