@@ -735,18 +735,12 @@ const VideoPlayer = ({
     showControlsTemporarily();
   };
 
-  // Enhanced touch handlers
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length !== 1) return;
-
-    const touch = e.touches[0];
-    setTouchStartX(touch.clientX);
-    setTouchStartY(touch.clientY);
-    setTouchStartTime(Date.now());
-    showControlsTemporarily();
-
-    // Handle double tap
+  // Add tap handlers
+  const handleTap = useCallback((e: React.TouchEvent) => {
     const currentTime = Date.now();
+    const touch = e.touches[0];
+    
+    // Check for double tap
     if (currentTime - lastTapTime < 300 && lastTapPosition) {
       const screenWidth = window.innerWidth;
       const tapX = touch.clientX;
@@ -761,13 +755,24 @@ const VideoPlayer = ({
         setShowSeekIndicator(true);
         setTimeout(() => setShowSeekIndicator(false), 1000);
       }
+    } else {
+      // Single tap - toggle controls
+      setShowControls(prev => !prev);
+      setShowQualityMenu(false);
+      setShowAudioMenu(false);
     }
     
     setLastTapTime(currentTime);
     setLastTapPosition({ x: touch.clientX, y: touch.clientY });
-  };
+  }, [lastTapTime, lastTapPosition]);
 
-  const handleTouchMove = (e: React.TouchEvent) => {
+  // Add touch event handlers
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return;
+    handleTap(e);
+  }, [handleTap]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!touchStartX || !touchStartY || !touchStartTime) return;
 
     const touch = e.touches[0];
@@ -781,9 +786,9 @@ const VideoPlayer = ({
       setShowSeekIndicator(true);
       e.preventDefault();
     }
-  };
+  }, [touchStartX, touchStartY, touchStartTime]);
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     if (!touchStartX || !touchStartY || !touchStartTime) return;
 
     // Handle seek
@@ -796,7 +801,7 @@ const VideoPlayer = ({
     setTouchStartY(null);
     setTouchStartTime(null);
     setSeekAmount(null);
-  };
+  }, [touchStartX, touchStartY, touchStartTime, seekAmount]);
 
   // Add seek indicator component
   const SeekIndicator = ({ amount }: { amount: number }) => (
@@ -1242,7 +1247,7 @@ const VideoPlayer = ({
       }`}
       onMouseMove={!isMobile ? showControlsTemporarily : undefined}
       onMouseLeave={() => !isMobile && setShowControls(false)}
-      onTouchStart={handleVideoTouch}
+      onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onClick={handleVideoClick}
