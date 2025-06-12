@@ -94,7 +94,9 @@ const VideoPlayer = ({
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
   const [touchStartTime, setTouchStartTime] = useState<number | null>(null);
   const [lastTapTime, setLastTapTime] = useState(0);
+  const [lastTapPosition, setLastTapPosition] = useState<{ x: number; y: number } | null>(null);
   const [seekAmount, setSeekAmount] = useState<number | null>(null);
+  const [showSeekIndicator, setShowSeekIndicator] = useState(false);
   const [audioTracks, setAudioTracks] = useState<AudioTrack[]>([]);
   const [currentAudioTrack, setCurrentAudioTrack] = useState<string>('default');
   const [showAudioMenu, setShowAudioMenu] = useState(false);
@@ -690,7 +692,7 @@ const VideoPlayer = ({
     showControlsTemporarily();
   };
 
-  // Mobile touch handlers
+  // Enhanced touch handlers
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length !== 1) return;
 
@@ -699,6 +701,27 @@ const VideoPlayer = ({
     setTouchStartY(touch.clientY);
     setTouchStartTime(Date.now());
     showControlsTemporarily();
+
+    // Handle double tap
+    const currentTime = Date.now();
+    if (currentTime - lastTapTime < 300 && lastTapPosition) {
+      const screenWidth = window.innerWidth;
+      const tapX = touch.clientX;
+      
+      // Determine if tap is on left or right side
+      if (tapX < screenWidth / 2) {
+        seek(-10); // Seek backward
+        setShowSeekIndicator(true);
+        setTimeout(() => setShowSeekIndicator(false), 1000);
+      } else {
+        seek(10); // Seek forward
+        setShowSeekIndicator(true);
+        setTimeout(() => setShowSeekIndicator(false), 1000);
+      }
+    }
+    
+    setLastTapTime(currentTime);
+    setLastTapPosition({ x: touch.clientX, y: touch.clientY });
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
@@ -710,8 +733,9 @@ const VideoPlayer = ({
 
     // Only handle horizontal swipes
     if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
-      const seekTime = Math.round((deltaX / window.innerWidth) * 60);
+      const seekTime = Math.round((deltaX / window.innerWidth) * 30); // More precise seeking
       setSeekAmount(seekTime);
+      setShowSeekIndicator(true);
       e.preventDefault();
     }
   };
@@ -719,22 +743,10 @@ const VideoPlayer = ({
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (!touchStartX || !touchStartY || !touchStartTime) return;
 
-    const touchEndTime = Date.now();
-    const timeDiff = touchEndTime - touchStartTime;
-
-    // Handle double tap
-    if (timeDiff < 300) {
-      const currentTime = Date.now();
-      if (currentTime - lastTapTime < 300) {
-        toggleFullscreen();
-        e.preventDefault();
-      }
-      setLastTapTime(currentTime);
-    }
-
     // Handle seek
     if (seekAmount) {
       seek(seekAmount);
+      setShowSeekIndicator(false);
     }
 
     setTouchStartX(null);
@@ -742,6 +754,25 @@ const VideoPlayer = ({
     setTouchStartTime(null);
     setSeekAmount(null);
   };
+
+  // Add seek indicator component
+  const SeekIndicator = ({ amount }: { amount: number }) => (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <div className="bg-black/80 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+        {amount > 0 ? (
+          <>
+            <RotateCw size={24} />
+            <span>+{Math.abs(amount)}s</span>
+          </>
+        ) : (
+          <>
+            <RotateCw size={24} />
+            <span>-{Math.abs(amount)}s</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
 
   // Keyboard and Accessibility Enhancements
   useEffect(() => {
@@ -1162,6 +1193,11 @@ const VideoPlayer = ({
           different browser.
         </video>
         
+        {/* Seek Indicator */}
+        {showSeekIndicator && seekAmount && (
+          <SeekIndicator amount={seekAmount} />
+        )}
+
         {/* Loading Overlay */}
         {(isBuffering || isQualityChanging) && (
           <div className="absolute inset-0 flex items-center justify-center z-50">
@@ -1201,14 +1237,14 @@ const VideoPlayer = ({
             </div>
           </div>
 
-          {/* Center Play/Pause Button */}
+          {/* Center Play/Pause Button - Larger on mobile */}
           <div className="absolute inset-0 flex items-center justify-center gap-x-12">
             <button
               onClick={() => seek(-10)}
               className="relative text-white hover:text-cinewave-red transition"
               aria-label="Rewind 10 seconds"
             >
-              <RotateCcw size={36} />
+              <RotateCcw size={isMobile ? 48 : 36} />
               <span className="absolute inset-0 flex items-center justify-center text-lg font-bold">
                 10
               </span>
@@ -1218,27 +1254,27 @@ const VideoPlayer = ({
               className="text-white transform hover:scale-110 transition"
               aria-label={isPlaying ? "Pause" : "Play"}
             >
-              {isPlaying ? <Pause size={48} /> : <Play size={48} />}
+              {isPlaying ? <Pause size={isMobile ? 64 : 48} /> : <Play size={isMobile ? 64 : 48} />}
             </button>
             <button
               onClick={() => seek(10)}
               className="relative text-white hover:text-cinewave-red transition"
               aria-label="Forward 10 seconds"
             >
-              <RotateCw size={36} />
+              <RotateCw size={isMobile ? 48 : 36} />
               <span className="absolute inset-0 flex items-center justify-center text-lg font-bold">
                 10
               </span>
             </button>
           </div>
 
-          {/* Bottom Controls */}
+          {/* Bottom Controls - Mobile Optimized */}
           <div className="absolute bottom-0 left-0 right-0 p-4">
-            {/* Progress Bar */}
-            <div className="relative">
+            {/* Progress Bar - Taller on mobile */}
+            <div className={`relative ${isMobile ? 'h-2' : 'h-1.5'}`}>
               <div
                 ref={progressRef}
-                className="w-full h-1.5 bg-gray-600/50 mb-4 cursor-pointer group relative rounded-full overflow-hidden"
+                className={`w-full ${isMobile ? 'h-2' : 'h-1.5'} bg-gray-600/50 mb-4 cursor-pointer group relative rounded-full overflow-hidden`}
                 onMouseDown={handleProgressMouseDown}
                 onTouchStart={handleProgressTouchStart}
                 onMouseMove={handleProgressHover}
@@ -1276,7 +1312,7 @@ const VideoPlayer = ({
               )}
             </div>
 
-            {/* Control Buttons */}
+            {/* Control Buttons - Mobile Optimized */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <button
@@ -1284,7 +1320,7 @@ const VideoPlayer = ({
                   className="text-white hover:text-cinewave-red transition"
                   aria-label={isMuted ? "Unmute" : "Mute"}
                 >
-                  {isMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
+                  {isMuted ? <VolumeX size={isMobile ? 28 : 24} /> : <Volume2 size={isMobile ? 28 : 24} />}
                 </button>
                 <input
                   type="range"
@@ -1292,7 +1328,7 @@ const VideoPlayer = ({
                   max="100"
                   value={isMuted ? 0 : volume * 100}
                   onChange={(e) => handleVolumeChange(parseInt(e.target.value))}
-                  className="w-24"
+                  className={`${isMobile ? 'w-32' : 'w-24'}`}
                   aria-label="Volume"
                   onTouchStart={(e) => e.stopPropagation()}
                   onTouchMove={(e) => e.stopPropagation()}
