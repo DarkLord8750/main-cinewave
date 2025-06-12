@@ -1229,23 +1229,17 @@ const VideoPlayer = ({
 
   // Modify click handler for controls with debounce
   const handleVideoClick = useCallback((e: React.MouseEvent) => {
+    // Only handle clicks directly on the container, not its children
     if (e.target === containerRef.current) {
-      // Only toggle controls visibility, don't trigger play/pause
       setShowControls(prev => !prev);
       setShowQualityMenu(false);
       setShowAudioMenu(false);
     }
   }, []);
 
-  // Add touch handler for controls with improved handling
-  const handleVideoTouch = useCallback((e: React.TouchEvent) => {
-    if (e.target === containerRef.current) {
-      e.preventDefault(); // Prevent default touch behavior
-      // Only toggle controls visibility, don't trigger play/pause
-      setShowControls(prev => !prev);
-      setShowQualityMenu(false);
-      setShowAudioMenu(false);
-    }
+  // Add click handler for control buttons
+  const handleControlClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent click from reaching container
   }, []);
 
   return (
@@ -1369,7 +1363,10 @@ const VideoPlayer = ({
           <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent z-[10000]">
             <div className="flex items-center gap-4">
               <button
-                onClick={handleBack}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleBack(e);
+                }}
                 className="text-white hover:text-cinewave-red transition-colors duration-200 cursor-pointer p-2 rounded-full hover:bg-black/20"
                 aria-label="Go back"
               >
@@ -1391,7 +1388,10 @@ const VideoPlayer = ({
           {/* Center Play/Pause Button - Larger on mobile */}
           <div className="absolute inset-0 flex items-center justify-center gap-x-12">
             <button
-              onClick={() => seek(-10)}
+              onClick={(e) => {
+                e.stopPropagation();
+                seek(-10);
+              }}
               className="relative text-white hover:text-cinewave-red transition"
               aria-label="Rewind 10 seconds"
             >
@@ -1401,14 +1401,20 @@ const VideoPlayer = ({
               </span>
             </button>
             <button
-              onClick={togglePlay}
+              onClick={(e) => {
+                e.stopPropagation();
+                togglePlay();
+              }}
               className="text-white transform hover:scale-110 transition"
               aria-label={isPlaying ? "Pause" : "Play"}
             >
               {isPlaying ? <Pause size={isMobile ? 64 : 48} /> : <Play size={isMobile ? 64 : 48} />}
             </button>
             <button
-              onClick={() => seek(10)}
+              onClick={(e) => {
+                e.stopPropagation();
+                seek(10);
+              }}
               className="relative text-white hover:text-cinewave-red transition"
               aria-label="Forward 10 seconds"
             >
@@ -1426,12 +1432,21 @@ const VideoPlayer = ({
             <div
               ref={progressRef}
                 className={`w-full ${isMobile ? 'h-2' : 'h-1.5'} bg-gray-600/50 cursor-pointer group relative rounded-full overflow-hidden`}
-              onMouseDown={handleProgressMouseDown}
-              onTouchStart={handleProgressTouchStart}
-                onMouseMove={handleProgressHover}
-                onMouseLeave={() => {
-                  setHoverPosition(null);
-                }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                handleProgressMouseDown(e);
+              }}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                handleProgressTouchStart(e);
+              }}
+              onMouseMove={(e) => {
+                e.stopPropagation();
+                handleProgressHover(e);
+              }}
+              onMouseLeave={() => {
+                setHoverPosition(null);
+              }}
               style={{ touchAction: "none" }}
             >
                 {/* Progress Background */}
@@ -1451,10 +1466,13 @@ const VideoPlayer = ({
             </div>
 
             {/* Control Buttons - Adjusted padding */}
-            <div className="flex items-center justify-between px-1">
+            <div className="flex items-center justify-between px-1" onClick={handleControlClick}>
               <div className="flex items-center gap-4">
                 <button
-                  onClick={toggleMute}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleMute();
+                  }}
                   className="text-white hover:text-cinewave-red transition p-2"
                   aria-label={isMuted ? "Unmute" : "Mute"}
                 >
@@ -1485,7 +1503,10 @@ const VideoPlayer = ({
                 {audioTracks.length > 1 && (!isMobile || !isPortrait) && (
                   <div className="relative z-[10002]">
                     <button
-                      onClick={() => setShowAudioMenu(!showAudioMenu)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowAudioMenu(!showAudioMenu);
+                      }}
                       className={`text-white hover:text-cinewave-red transition flex items-center gap-1 p-2 ${
                         isQualityChanging ? 'opacity-50 cursor-not-allowed' : ''
                       }`}
@@ -1504,7 +1525,10 @@ const VideoPlayer = ({
                         {audioTracks.map((track) => (
                           <button
                             key={track.id}
-                            onClick={() => handleAudioTrackChange(track.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAudioTrackChange(track.id);
+                            }}
                             disabled={isQualityChanging}
                             className={`block w-full px-4 py-2 text-sm text-left hover:bg-cinewave-red transition ${
                               currentAudioTrack === track.id ? "bg-cinewave-red" : ""
@@ -1522,7 +1546,10 @@ const VideoPlayer = ({
                 {availableQualities.length > 1 && (!isMobile || !isPortrait) && (
                   <div className="relative z-[10002]">
                     <button
-                      onClick={() => setShowQualityMenu(!showQualityMenu)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowQualityMenu(!showQualityMenu);
+                      }}
                       className={`text-white hover:text-cinewave-red transition flex items-center gap-1 p-2 ${
                         isQualityChanging ? 'opacity-50 cursor-not-allowed' : ''
                       }`}
@@ -1542,7 +1569,10 @@ const VideoPlayer = ({
                         {availableQualities.map((quality) => (
                           <button
                             key={quality.value}
-                            onClick={() => handleQualityChange(quality.value)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleQualityChange(quality.value);
+                            }}
                             disabled={isQualityChanging}
                             className={`block w-full px-4 py-2 text-sm text-left hover:bg-cinewave-red transition ${
                               currentQuality === quality.value ? "bg-cinewave-red" : ""
@@ -1563,14 +1593,20 @@ const VideoPlayer = ({
                   onChangeEpisode && (
                     <div className="flex items-center gap-2 ml-4">
                       <button
-                        onClick={() => onChangeEpisode(currentEpisodeIndex - 1)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onChangeEpisode(currentEpisodeIndex - 1);
+                        }}
                         disabled={currentEpisodeIndex === 0}
                         className="px-3 py-1 rounded bg-gray-700 text-white disabled:opacity-50"
                       >
                         Previous
                       </button>
                       <button
-                        onClick={() => onChangeEpisode(currentEpisodeIndex + 1)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onChangeEpisode(currentEpisodeIndex + 1);
+                        }}
                         disabled={currentEpisodeIndex === episodes.length - 1}
                         className="px-3 py-1 rounded bg-gray-700 text-white disabled:opacity-50"
                       >
@@ -1581,7 +1617,10 @@ const VideoPlayer = ({
 
                 {/* Fullscreen Toggle */}
                 <button
-                  onClick={toggleFullscreen}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleFullscreen();
+                  }}
                   className="text-white hover:text-cinewave-red transition z-[10002] relative ml-4 p-2"
                   aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
                 >
