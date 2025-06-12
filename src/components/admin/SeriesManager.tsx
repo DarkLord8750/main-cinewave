@@ -11,9 +11,9 @@ interface SeriesManagerProps {
   onSeasonsUpdated?: (updatedSeasons?: Season[]) => void;
 }
 
-type VideoQuality = '480p' | '720p' | '1080p' | '4k';
+type VideoQuality = 'master_url' | 'master_url_480p' | 'master_url_720p' | 'master_url_1080p' | '480p' | '720p' | '1080p' | '4k';
 
-const videoQualities: VideoQuality[] = ['480p', '720p', '1080p', '4k'];
+const videoQualities: VideoQuality[] = ['master_url', 'master_url_480p', 'master_url_720p', 'master_url_1080p', '480p', '720p', '1080p', '4k'];
 
 const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerProps) => {
   const { toast } = useToast();
@@ -172,6 +172,10 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
       episodeNumber: (form.elements.namedItem('episodeNumber') as HTMLInputElement).value,
       title: (form.elements.namedItem('title') as HTMLInputElement).value,
       duration: (form.elements.namedItem('duration') as HTMLInputElement).value,
+      master_url: (form.elements.namedItem('master_url') as HTMLInputElement)?.value,
+      master_url_480p: (form.elements.namedItem('master_url_480p') as HTMLInputElement)?.value,
+      master_url_720p: (form.elements.namedItem('master_url_720p') as HTMLInputElement)?.value,
+      master_url_1080p: (form.elements.namedItem('master_url_1080p') as HTMLInputElement)?.value,
       videoUrl480p: (form.elements.namedItem('videoUrl480p') as HTMLInputElement)?.value,
       videoUrl720p: (form.elements.namedItem('videoUrl720p') as HTMLInputElement)?.value,
       videoUrl1080p: (form.elements.namedItem('videoUrl1080p') as HTMLInputElement)?.value,
@@ -191,6 +195,10 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
         episodeNumber: parseInt(formData.episodeNumber),
         title: formData.title.trim(),
         duration: formData.duration,
+        master_url: formData.master_url || undefined,
+        master_url_480p: formData.master_url_480p || undefined,
+        master_url_720p: formData.master_url_720p || undefined,
+        master_url_1080p: formData.master_url_1080p || undefined,
         videoUrl480p: formData.videoUrl480p || undefined,
         videoUrl720p: formData.videoUrl720p || undefined,
         videoUrl1080p: formData.videoUrl1080p || undefined,
@@ -262,7 +270,13 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
     if (!editEpisodeData) return;
     setIsLoading(true);
     try {
-      await updateEpisode(episode.id, { ...editEpisodeData });
+      await updateEpisode(episode.id, {
+        ...editEpisodeData,
+        master_url: editEpisodeData.master_url || undefined,
+        master_url_480p: editEpisodeData.master_url_480p || undefined,
+        master_url_720p: editEpisodeData.master_url_720p || undefined,
+        master_url_1080p: editEpisodeData.master_url_1080p || undefined,
+      });
       // Update local state immediately
       const updatedSeasons = seasons.map(season => ({
         ...season,
@@ -499,6 +513,10 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                                   <td className="py-2"><input type="text" value={editEpisodeData?.duration ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, duration: e.target.value } : d)} className="w-20 border rounded p-2" /></td>
                                   <td className="py-2">
                                     <div className="space-y-2">
+                                      <input type="url" placeholder="Master URL" value={editEpisodeData?.master_url ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, master_url: e.target.value } : d)} className="w-24 border rounded p-2" />
+                                      <input type="url" placeholder="Master URL 480p" value={editEpisodeData?.master_url_480p ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, master_url_480p: e.target.value } : d)} className="w-24 border rounded p-2" />
+                                      <input type="url" placeholder="Master URL 720p" value={editEpisodeData?.master_url_720p ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, master_url_720p: e.target.value } : d)} className="w-24 border rounded p-2" />
+                                      <input type="url" placeholder="Master URL 1080p" value={editEpisodeData?.master_url_1080p ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, master_url_1080p: e.target.value } : d)} className="w-24 border rounded p-2" />
                                       <input type="url" placeholder="480p" value={editEpisodeData?.videoUrl480p ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, videoUrl480p: e.target.value } : d)} className="w-24 border rounded p-2" />
                                       <input type="url" placeholder="720p" value={editEpisodeData?.videoUrl720p ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, videoUrl720p: e.target.value } : d)} className="w-24 border rounded p-2" />
                                       <input type="url" placeholder="1080p" value={editEpisodeData?.videoUrl1080p ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, videoUrl1080p: e.target.value } : d)} className="w-24 border rounded p-2" />
