@@ -170,27 +170,35 @@ const VideoPlayer = ({
       if (masterUrl && typeof Hls !== "undefined" && Hls.isSupported()) {
         try {
           const hls = new Hls({
-            maxBufferLength: 25,
-            maxMaxBufferLength: 40,
-            maxBufferHole: 0.3,
-            maxFragLookUpTolerance: 0.2,
-            backBufferLength: 10,
-            maxStarvationDelay: 4,
-            appendErrorMaxRetry: 3,
-            lowLatencyMode: false,
-            enableSoftwareAES: true,
-            enableWorker: true,
-            capLevelToPlayerSize: true,
-            startLevel: -1,
-            fragLoadingMaxRetry: 4,
+            // Optimize buffer settings
+            maxBufferLength: 30,
+            maxMaxBufferLength: 60,
+            maxBufferSize: 60 * 1000 * 1000, // 60MB
+            maxBufferHole: 0.5,
+            lowLatencyMode: true,
+            backBufferLength: 90,
+            
+            // Optimize loading settings
+            manifestLoadingTimeOut: 20000,
             manifestLoadingMaxRetry: 4,
+            manifestLoadingRetryDelay: 1000,
+            levelLoadingTimeOut: 20000,
             levelLoadingMaxRetry: 4,
-            manifestLoadingTimeOut: 12000,
-            fragLoadingTimeOut: 12000,
-            levelLoadingTimeOut: 12000,
-            startFragPrefetch: false,
+            levelLoadingRetryDelay: 1000,
+            fragLoadingTimeOut: 20000,
+            fragLoadingMaxRetry: 4,
+            fragLoadingRetryDelay: 1000,
+            
+            // Optimize playback settings
+            startLevel: -1, // Auto quality selection
+            abrEwmaDefaultEstimate: 500000, // 500 kbps
             testBandwidth: true,
             progressive: true,
+            lowLatencyMode: true,
+            enableWorker: true,
+            startFragPrefetch: true,
+            
+            // Optimize network settings
             xhrSetup: function(xhr: XMLHttpRequest, url: string) {
               xhr.withCredentials = false;
               // Add cache-busting for problematic CDNs
@@ -200,6 +208,52 @@ const VideoPlayer = ({
                 url += '&_=' + Date.now();
               }
             }
+          });
+
+          // Add error recovery
+          hls.on(Hls.Events.ERROR, (event, data) => {
+            if (data.fatal) {
+              console.error("Fatal HLS error:", data);
+              
+              switch (data.type) {
+                case Hls.ErrorTypes.NETWORK_ERROR:
+                  console.log("Network error, trying to recover...");
+                  hls.startLoad();
+                  break;
+                case Hls.ErrorTypes.MEDIA_ERROR:
+                  console.log("Media error, trying to recover...");
+                  hls.recoverMediaError();
+                  break;
+                default:
+                  console.log("Fatal error, destroying HLS instance");
+                  hls.destroy();
+                  setHlsInstance(null);
+                  break;
+              }
+            }
+          });
+
+          // Add buffer monitoring
+          hls.on(Hls.Events.BUFFER_CREATED, () => {
+            console.log("Buffer created");
+          });
+
+          hls.on(Hls.Events.BUFFER_APPENDED, () => {
+            console.log("Buffer appended");
+          });
+
+          hls.on(Hls.Events.BUFFER_FLUSHED, () => {
+            console.log("Buffer flushed");
+          });
+
+          // Add quality level monitoring
+          hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
+            console.log(`Switched to quality level: ${data.level}`);
+          });
+
+          // Add bandwidth monitoring
+          hls.on(Hls.Events.BANDWIDTH_ESTIMATE, (event, data) => {
+            console.log(`Bandwidth estimate: ${data.bandwidth} bps`);
           });
 
           // Attach media and load source
@@ -268,26 +322,6 @@ const VideoPlayer = ({
                 } catch (error) {
                   console.error('Error restoring audio track after tracks update:', error);
                 }
-              }
-            }
-          });
-
-          hls.on(Hls.Events.ERROR, (event, data) => {
-            if (data.fatal) {
-              console.error("Fatal HLS error:", data);
-              setPlayerError("Video playback error. Please try a different quality.");
-              
-              switch (data.type) {
-                case Hls.ErrorTypes.NETWORK_ERROR:
-                  hls.startLoad();
-                  break;
-                case Hls.ErrorTypes.MEDIA_ERROR:
-                  hls.recoverMediaError();
-                  break;
-                default:
-                  hls.destroy();
-                  setHlsInstance(null);
-                  break;
               }
             }
           });
