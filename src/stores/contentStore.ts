@@ -14,6 +14,10 @@ export interface Content {
   backdropImage: string;
   trailerUrl: string;
   featured: boolean;
+  master_url?: string;
+  master_url_480p?: string;
+  master_url_720p?: string;
+  master_url_1080p?: string;
   videoUrl480p?: string;
   videoUrl720p?: string;
   videoUrl1080p?: string;
@@ -36,6 +40,10 @@ export interface Episode {
   episodeNumber: number;
   title: string;
   duration: string;
+  master_url?: string;
+  master_url_480p?: string;
+  master_url_720p?: string;
+  master_url_1080p?: string;
   videoUrl480p?: string;
   videoUrl720p?: string;
   videoUrl1080p?: string;
@@ -149,6 +157,10 @@ export const useContentStore = create<ContentState>()(
             posterImage: content.poster_image,
             backdropImage: content.backdrop_image,
             trailerUrl: content.trailer_url,
+            master_url: content.master_url,
+            master_url_480p: content.master_url_480p,
+            master_url_720p: content.master_url_720p,
+            master_url_1080p: content.master_url_1080p,
             videoUrl480p: content.video_url_480p,
             videoUrl720p: content.video_url_720p,
             videoUrl1080p: content.video_url_1080p,
@@ -164,6 +176,10 @@ export const useContentStore = create<ContentState>()(
                 episodeNumber: episode.episode_number,
                 title: episode.title || '',
                 duration: episode.duration || '',
+                master_url: episode.master_url,
+                master_url_480p: episode.master_url_480p,
+                master_url_720p: episode.master_url_720p,
+                master_url_1080p: episode.master_url_1080p,
                 videoUrl480p: episode.video_url_480p,
                 videoUrl720p: episode.video_url_720p,
                 videoUrl1080p: episode.video_url_1080p,
@@ -229,6 +245,10 @@ export const useContentStore = create<ContentState>()(
             posterImage: content.poster_image,
             backdropImage: content.backdrop_image,
             trailerUrl: content.trailer_url,
+            master_url: content.master_url,
+            master_url_480p: content.master_url_480p,
+            master_url_720p: content.master_url_720p,
+            master_url_1080p: content.master_url_1080p,
             videoUrl480p: content.video_url_480p,
             videoUrl720p: content.video_url_720p,
             videoUrl1080p: content.video_url_1080p,
@@ -314,6 +334,10 @@ export const useContentStore = create<ContentState>()(
               trailer_url: content.trailerUrl,
               featured: content.featured,
               ...(content.type === 'movie' ? {
+                master_url: content.master_url,
+                master_url_480p: content.master_url_480p,
+                master_url_720p: content.master_url_720p,
+                master_url_1080p: content.master_url_1080p,
                 video_url_480p: content.videoUrl480p,
                 video_url_720p: content.videoUrl720p,
                 video_url_1080p: content.videoUrl1080p,
@@ -371,10 +395,14 @@ export const useContentStore = create<ContentState>()(
                   episode_number: episode.episodeNumber,
                   title: episode.title,
                   duration: episode.duration,
-                  video_url_480p: episode.videoUrl480p,
-                  video_url_720p: episode.videoUrl720p,
-                  video_url_1080p: episode.videoUrl1080p,
-                  video_url_4k: episode.videoUrl4k
+                  master_url: episode.master_url,
+               master_url_480p: episode.master_url_480p,
+               master_url_720p: episode.master_url_720p,
+               master_url_1080p: episode.master_url_1080p,
+               video_url_480p: episode.videoUrl480p,
+               video_url_720p: episode.videoUrl720p,
+               video_url_1080p: episode.videoUrl1080p,
+               video_url_4k: episode.videoUrl4k
                 }));
 
                 const { error: episodesError } = await supabase
@@ -466,6 +494,10 @@ export const useContentStore = create<ContentState>()(
               backdrop_image: content.backdropImage,
               trailer_url: content.trailerUrl,
               featured: content.featured,
+              master_url: content.master_url,
+              master_url_480p: content.master_url_480p,
+              master_url_720p: content.master_url_720p,
+              master_url_1080p: content.master_url_1080p,
               video_url_480p: content.videoUrl480p,
               video_url_720p: content.videoUrl720p,
               video_url_1080p: content.videoUrl1080p,
@@ -500,6 +532,10 @@ export const useContentStore = create<ContentState>()(
                           episode_number: episode.episodeNumber,
                           title: episode.title,
                           duration: episode.duration,
+                          master_url: episode.master_url,
+                          master_url_480p: episode.master_url_480p,
+                          master_url_720p: episode.master_url_720p,
+                          master_url_1080p: episode.master_url_1080p,
                           video_url_480p: episode.videoUrl480p,
                           video_url_720p: episode.videoUrl720p,
                           video_url_1080p: episode.videoUrl1080p,
@@ -517,6 +553,10 @@ export const useContentStore = create<ContentState>()(
                           episode_number: episode.episodeNumber,
                           title: episode.title,
                           duration: episode.duration,
+                          master_url: episode.master_url,
+                          master_url_480p: episode.master_url_480p,
+                          master_url_720p: episode.master_url_720p,
+                          master_url_1080p: episode.master_url_1080p,
                           video_url_480p: episode.videoUrl480p,
                           video_url_720p: episode.videoUrl720p,
                           video_url_1080p: episode.videoUrl1080p,
@@ -548,6 +588,10 @@ export const useContentStore = create<ContentState>()(
                     episode_number: episode.episodeNumber,
                     title: episode.title,
                     duration: episode.duration,
+                    master_url: episode.master_url,
+                    master_url_480p: episode.master_url_480p,
+                    master_url_720p: episode.master_url_720p,
+                    master_url_1080p: episode.master_url_1080p,
                     video_url_480p: episode.videoUrl480p,
                     video_url_720p: episode.videoUrl720p,
                     video_url_1080p: episode.videoUrl1080p,
@@ -703,10 +747,14 @@ export const useContentStore = create<ContentState>()(
             p_episode_number: episode.episodeNumber,
             p_title: episode.title,
             p_duration: episode.duration || '',
-            p_video_url_480p: episode.videoUrl480p,
-            p_video_url_720p: episode.videoUrl720p,
-            p_video_url_1080p: episode.videoUrl1080p,
-            p_video_url_4k: episode.videoUrl4k
+            p_master_url: episode.master_url,
+             p_master_url_480p: episode.master_url_480p,
+             p_master_url_720p: episode.master_url_720p,
+             p_master_url_1080p: episode.master_url_1080p,
+             p_video_url_480p: episode.videoUrl480p,
+             p_video_url_720p: episode.videoUrl720p,
+             p_video_url_1080p: episode.videoUrl1080p,
+             p_video_url_4k: episode.videoUrl4k
           });
           if (error) throw error;
           await get().fetchContents();
@@ -725,6 +773,10 @@ export const useContentStore = create<ContentState>()(
               episode_number: episode.episodeNumber,
               title: episode.title,
               duration: episode.duration,
+              p_master_url: episode.master_url,
+              p_master_url_480p: episode.master_url_480p,
+              p_master_url_720p: episode.master_url_720p,
+              p_master_url_1080p: episode.master_url_1080p,
               video_url_480p: episode.videoUrl480p,
               video_url_720p: episode.videoUrl720p,
               video_url_1080p: episode.videoUrl1080p,
