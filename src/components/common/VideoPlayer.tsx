@@ -138,6 +138,7 @@ const VideoPlayer = ({
   const isDraggingRef = useRef(false);
   const lastUpdateTimeRef = useRef(0);
   const RAF_ID = useRef<number>();
+  const seekTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Add effect to manage video playing state
   useEffect(() => {
@@ -956,6 +957,11 @@ const VideoPlayer = ({
     RAF_ID.current = requestAnimationFrame(() => {
       dragProgressRef.current = newTime;
       setDragProgress(newTime);
+      
+      // Update video position while dragging
+      if (videoRef.current) {
+        videoRef.current.currentTime = newTime;
+      }
     });
   }, [duration]);
 
@@ -979,6 +985,11 @@ const VideoPlayer = ({
     RAF_ID.current = requestAnimationFrame(() => {
       dragProgressRef.current = newTime;
       setDragProgress(newTime);
+      
+      // Update video position while dragging
+      if (videoRef.current) {
+        videoRef.current.currentTime = newTime;
+      }
     });
   }, [duration]);
 
@@ -1088,6 +1099,9 @@ const VideoPlayer = ({
       if (RAF_ID.current) {
         cancelAnimationFrame(RAF_ID.current);
       }
+      if (seekTimeoutRef.current) {
+        clearTimeout(seekTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -1098,6 +1112,11 @@ const VideoPlayer = ({
     const newTime = Math.max(0, Math.min(duration, percent * duration));
     dragProgressRef.current = newTime;
     setDragProgress(newTime);
+    
+    // Update video position immediately
+    if (videoRef.current) {
+      videoRef.current.currentTime = newTime;
+    }
   };
 
   const updateSeekFromTouchEvent = (e: React.TouchEvent<HTMLDivElement>) => {
@@ -1108,6 +1127,11 @@ const VideoPlayer = ({
     const newTime = Math.max(0, Math.min(duration, percent * duration));
     dragProgressRef.current = newTime;
     setDragProgress(newTime);
+    
+    // Update video position immediately
+    if (videoRef.current) {
+      videoRef.current.currentTime = newTime;
+    }
   };
 
   // Debug: Log current state
