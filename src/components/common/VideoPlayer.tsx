@@ -133,6 +133,12 @@ const VideoPlayer = ({
   // Add state for touch controls
   const [isTouchingControls, setIsTouchingControls] = useState(false);
 
+  // Add state for progress bar
+  const [dragProgress, setDragProgress] = useState<number | null>(null);
+  const isDraggingRef = useRef(false);
+  const lastUpdateTimeRef = useRef(0);
+  const RAF_ID = useRef<number>();
+
   // Add effect to manage video playing state
   useEffect(() => {
     setIsVideoPlaying(true);
@@ -906,30 +912,79 @@ const VideoPlayer = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isMuted, volume, isPlaying]);
 
-  // Double Tap and Draggable Seekbar Enhancements
-  // --- Draggable Seekbar (Improved, YouTube-like) ---
-  const [dragProgress, setDragProgress] = useState<number | null>(null);
+  // Optimized progress bar handlers
+  const handleProgressMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!progressRef.current) return;
+    e.stopPropagation();
+    isDraggingRef.current = true;
+    dragProgressRef.current = null;
+    updateSeekFromEvent(e);
+    setShowControls(true);
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleDocumentMouseMove);
+    window.addEventListener("mouseup", handleDocumentMouseUp);
+  };
 
-  useEffect(() => {
-    dragProgressRef.current = dragProgress;
-  }, [dragProgress]);
+  const handleProgressTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!progressRef.current) return;
+    e.stopPropagation();
+    isDraggingRef.current = true;
+    dragProgressRef.current = null;
+    updateSeekFromTouchEvent(e);
+    setShowControls(true);
+    document.body.style.userSelect = "none";
+    window.addEventListener("touchmove", handleDocumentTouchMove);
+    window.addEventListener("touchend", handleDocumentTouchEnd);
+  };
 
-  // Mouse events
-  const handleDocumentMouseMove = useCallback(
-    (e: MouseEvent) => {
-      if (!progressRef.current) return;
-      const rect = progressRef.current.getBoundingClientRect();
-      const percent = (e.clientX - rect.left) / rect.width;
-      const newTime = Math.max(0, Math.min(duration, percent * duration));
+  const handleDocumentMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDraggingRef.current || !progressRef.current) return;
+    
+    const now = performance.now();
+    if (now - lastUpdateTimeRef.current < 16) return; // Limit to ~60fps
+    lastUpdateTimeRef.current = now;
+
+    const rect = progressRef.current.getBoundingClientRect();
+    const percent = (e.clientX - rect.left) / rect.width;
+    const newTime = Math.max(0, Math.min(duration, percent * duration));
+    
+    // Use RAF for smooth updates
+    if (RAF_ID.current) {
+      cancelAnimationFrame(RAF_ID.current);
+    }
+    
+    RAF_ID.current = requestAnimationFrame(() => {
+      dragProgressRef.current = newTime;
       setDragProgress(newTime);
-      setShowControls(true);
-    },
-    [duration]
-  );
+    });
+  }, [duration]);
+
+  const handleDocumentTouchMove = useCallback((e: TouchEvent) => {
+    if (!isDraggingRef.current || !progressRef.current) return;
+    
+    const now = performance.now();
+    if (now - lastUpdateTimeRef.current < 16) return; // Limit to ~60fps
+    lastUpdateTimeRef.current = now;
+
+    const touch = e.touches[0];
+    const rect = progressRef.current.getBoundingClientRect();
+    const percent = (touch.clientX - rect.left) / rect.width;
+    const newTime = Math.max(0, Math.min(duration, percent * duration));
+    
+    // Use RAF for smooth updates
+    if (RAF_ID.current) {
+      cancelAnimationFrame(RAF_ID.current);
+    }
+    
+    RAF_ID.current = requestAnimationFrame(() => {
+      dragProgressRef.current = newTime;
+      setDragProgress(newTime);
+    });
+  }, [duration]);
 
   const handleDocumentMouseUp = useCallback(() => {
-    setTimeout(() => setShowControls(false), 2000);
-    setTimeout(() => setShowQualityMenu(false), 2000);
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
     
     // Get the latest drag position
     const seekTime = dragProgressRef.current !== null ? dragProgressRef.current : currentTime;
@@ -965,40 +1020,21 @@ const VideoPlayer = ({
     // Update UI state
     setCurrentTime(seekTime);
     setDragProgress(null);
+    dragProgressRef.current = null;
     
-    // Clean up event listeners
+    // Clean up
+    document.body.style.userSelect = "";
     window.removeEventListener("mousemove", handleDocumentMouseMove);
     window.removeEventListener("mouseup", handleDocumentMouseUp);
-  }, [handleDocumentMouseMove, currentTime, hlsInstance]);
-
-  const handleProgressMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!progressRef.current) return;
-    e.stopPropagation();
-    setDragProgress(null);
-    updateSeekFromEvent(e);
-    setShowControls(true);
-    document.body.style.userSelect = "none";
-    window.addEventListener("mousemove", handleDocumentMouseMove);
-    window.addEventListener("mouseup", handleDocumentMouseUp);
-  };
-
-  // Touch events
-  const handleDocumentTouchMove = useCallback(
-    (e: TouchEvent) => {
-      if (!progressRef.current) return;
-      const touch = e.touches[0];
-      const rect = progressRef.current.getBoundingClientRect();
-      const percent = (touch.clientX - rect.left) / rect.width;
-      const newTime = Math.max(0, Math.min(duration, percent * duration));
-      setDragProgress(newTime);
-      setShowControls(true);
-    },
-    [duration]
-  );
+    
+    if (RAF_ID.current) {
+      cancelAnimationFrame(RAF_ID.current);
+    }
+  }, [currentTime, hlsInstance]);
 
   const handleDocumentTouchEnd = useCallback(() => {
-    setTimeout(() => setShowControls(false), 2000);
-    setTimeout(() => setShowQualityMenu(false), 2000);
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
     
     // Get the latest drag position
     const seekTime = dragProgressRef.current !== null ? dragProgressRef.current : currentTime;
@@ -1034,28 +1070,33 @@ const VideoPlayer = ({
     // Update UI state
     setCurrentTime(seekTime);
     setDragProgress(null);
+    dragProgressRef.current = null;
     
-    // Clean up event listeners
+    // Clean up
+    document.body.style.userSelect = "";
     window.removeEventListener("touchmove", handleDocumentTouchMove);
     window.removeEventListener("touchend", handleDocumentTouchEnd);
-  }, [handleDocumentTouchMove, currentTime, hlsInstance]);
+    
+    if (RAF_ID.current) {
+      cancelAnimationFrame(RAF_ID.current);
+    }
+  }, [currentTime, hlsInstance]);
 
-  const handleProgressTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!progressRef.current) return;
-    e.stopPropagation();
-    setDragProgress(null);
-    updateSeekFromTouchEvent(e);
-    setShowControls(true);
-    document.body.style.userSelect = "none";
-    window.addEventListener("touchmove", handleDocumentTouchMove);
-    window.addEventListener("touchend", handleDocumentTouchEnd);
-  };
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (RAF_ID.current) {
+        cancelAnimationFrame(RAF_ID.current);
+      }
+    };
+  }, []);
 
   const updateSeekFromEvent = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!progressRef.current) return;
     const rect = progressRef.current.getBoundingClientRect();
     const percent = (e.clientX - rect.left) / rect.width;
     const newTime = Math.max(0, Math.min(duration, percent * duration));
+    dragProgressRef.current = newTime;
     setDragProgress(newTime);
   };
 
@@ -1065,6 +1106,7 @@ const VideoPlayer = ({
     const rect = progressRef.current.getBoundingClientRect();
     const percent = (touch.clientX - rect.left) / rect.width;
     const newTime = Math.max(0, Math.min(duration, percent * duration));
+    dragProgressRef.current = newTime;
     setDragProgress(newTime);
   };
 
@@ -1507,24 +1549,30 @@ const VideoPlayer = ({
             <div className="relative mb-2">
               <div
                 ref={progressRef}
-                className={`w-full ${isMobile ? 'h-3' : 'h-2'} bg-gray-600/50 cursor-pointer group relative rounded-full overflow-hidden`}
+                className={`w-full ${isMobile ? 'h-4' : 'h-3'} bg-gray-600/50 cursor-pointer group relative rounded-full overflow-visible`}
                 onMouseDown={handleProgressMouseDown}
                 onTouchStart={handleProgressTouchStart}
                 style={{ touchAction: "none" }}
               >
                 {/* Progress Background */}
-                <div className="absolute inset-0 bg-gray-600/30 group-hover:bg-gray-600/40 transition-colors" />
+                <div className="absolute inset-0 bg-gray-600/30 group-hover:bg-gray-600/40 transition-colors rounded-full" />
                 
                 {/* Progress Fill */}
                 <div
-                  className="h-full bg-cinewave-red relative group-hover:h-full transition-all duration-150 ease-out"
+                  className="h-full bg-cinewave-red relative group-hover:h-full transition-all duration-150 ease-out rounded-full"
                   style={{
                     width: `${((dragProgress !== null ? dragProgress : currentTime) / duration) * 100}%`,
                   }}
-                >
-                  {/* Progress Handle */}
-                  <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-cinewave-red rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-150 shadow-lg transform scale-100 group-hover:scale-110" />
-                </div>
+                />
+
+                {/* Progress Ball (Always visible) */}
+                <div 
+                  className="absolute top-1/2 w-4 h-4 bg-white rounded-full shadow-lg transform scale-100 group-hover:scale-110 transition-transform duration-150 z-10"
+                  style={{
+                    left: `${((dragProgress !== null ? dragProgress : currentTime) / duration) * 100}%`,
+                    transform: 'translate(-50%, -50%)',
+                  }}
+                />
               </div>
             </div>
 
