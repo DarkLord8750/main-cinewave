@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useContentStore, Content } from '../stores/contentStore';
-import { Play, Plus, Check, Info } from 'lucide-react';
+import { Play, Plus, Check } from 'lucide-react';
 import VideoPlayer from '../components/common/VideoPlayer';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { useAuthStore } from '../stores/authStore';
@@ -16,7 +16,7 @@ const MoviePage = () => {
 
   const { id } = useParams<{ id: string }>();
   const { currentProfile } = useAuthStore();
-  const { fetchHistory } = useWatchHistoryStore();
+  const { fetchHistory, history } = useWatchHistoryStore();
   const { 
     contents, 
     fetchContents, 
@@ -76,10 +76,13 @@ const MoviePage = () => {
   };
 
   const handleClose = () => {
-    if (isFullscreen) {
-      setIsFullscreen(false);
-    }
-    setShowVideo(false);
+    console.log('Closing video player');
+    // First set fullscreen to false, then hide the video with a slight delay
+    setIsFullscreen(false);
+    // Use setTimeout to ensure state updates don't conflict
+    setTimeout(() => {
+      setShowVideo(false);
+    }, 100);
   };
 
   const handleMyList = () => {
@@ -92,13 +95,13 @@ const MoviePage = () => {
     }
   };
 
-  const getVideoUrls = () => {
+  const getMasterUrls = () => {
     if (!content) return {};
     return {
-      '480p': content.videoUrl480p || '',
-      '720p': content.videoUrl720p || '',
-      '1080p': content.videoUrl1080p || '',
-      '4k': content.videoUrl4k || ''
+      masterUrl: content.master_url || '',
+      masterUrl480p: content.master_url_480p || '',
+      masterUrl720p: content.master_url_720p || '',
+      masterUrl1080p: content.master_url_1080p || ''
     };
   };
 
@@ -107,19 +110,27 @@ const MoviePage = () => {
   }
 
   const inMyList = isInMyList(content.id);
+  
+  // Get watch progress for this content
+  const watchProgress = content && currentProfile 
+    ? history.find(h => h.contentId === content.id && h.profileId === currentProfile.id)
+    : null;
+  const startTime = watchProgress?.watchTime || 0;
 
   return (
     <div className="min-h-screen bg-netflix-dark">
       {isFullscreen ? (
         <div className="fixed inset-0 z-50 bg-black">
+          {/* Video player implementation */}
           <VideoPlayer
             title={content.title}
             description={content.description}
-            videoUrls={getVideoUrls()}
+            {...getMasterUrls()}
             contentId={content.id}
             onClose={handleClose}
             isFullScreen={true}
             autoPlay={true}
+            startTime={startTime}
           />
         </div>
       ) : (
