@@ -194,14 +194,12 @@ const VideoPlayer = ({
             abrEwmaDefaultEstimate: 500000, // 500 kbps
             testBandwidth: true,
             progressive: true,
-            lowLatencyMode: true,
             enableWorker: true,
             startFragPrefetch: true,
             
             // Optimize network settings
             xhrSetup: function(xhr: XMLHttpRequest, url: string) {
               xhr.withCredentials = false;
-              // Add cache-busting for problematic CDNs
               if (url.indexOf('?') === -1) {
                 url += '?_=' + Date.now();
               } else {
@@ -254,6 +252,17 @@ const VideoPlayer = ({
           // Add bandwidth monitoring
           hls.on(Hls.Events.BANDWIDTH_ESTIMATE, (event, data) => {
             console.log(`Bandwidth estimate: ${data.bandwidth} bps`);
+          });
+
+          // Fix HLS event types
+          interface HlsEventData {
+            level?: number;
+            bandwidth?: number;
+          }
+
+          // Add proper event types for monitoring
+          hls.on(Hls.Events.LEVEL_LOADED, (event: Event, data: HlsEventData) => {
+            console.log(`Level loaded: ${data.level}`);
           });
 
           // Attach media and load source
@@ -1125,6 +1134,106 @@ const VideoPlayer = ({
     setHoverPosition({ time: hoverTime, x: e.clientX });
   };
 
+  // Add video sync monitoring with improved error handling
+  const checkVideoSync = useCallback(() => {
+    if (!videoRef.current) return;
+    
+    const video = videoRef.current;
+    
+    // Check if video is playing but not advancing
+    if (!video.paused && video.currentTime === lastSyncTimeRef.current) {
+      console.log('Video playback stalled, attempting to recover...');
+      const currentTime = video.currentTime;
+      video.currentTime = currentTime + 0.1; // Small jump to trigger playback
+    }
+    
+    // Update last sync time
+    lastSyncTimeRef.current = video.currentTime;
+  }, []);
+
+  // Add ref for tracking last sync time
+  const lastSyncTimeRef = useRef(0);
+
+  // Add periodic sync check with cleanup
+  useEffect(() => {
+    const syncInterval = setInterval(checkVideoSync, 1000);
+    return () => {
+      clearInterval(syncInterval);
+      lastSyncTimeRef.current = 0;
+    };
+  }, [checkVideoSync]);
+
+  // Add video error recovery with improved handling
+  const handleVideoError = useCallback(() => {
+    if (!videoRef.current) return;
+    
+    console.log('Video error detected, attempting to recover...');
+    const currentTime = videoRef.current.currentTime;
+    const wasPlaying = !videoRef.current.paused;
+    
+    // Try to recover by seeking slightly
+    videoRef.current.currentTime = currentTime + 0.1;
+    
+    if (wasPlaying) {
+      videoRef.current.play().catch(console.error);
+    }
+  }, []);
+
+  // Add error event listener
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.addEventListener('error', handleVideoError);
+    return () => video.removeEventListener('error', handleVideoError);
+  }, [handleVideoError]);
+
+  // Add orientation change handler with debounce
+  const [isPortrait, setIsPortrait] = useState(window.innerHeight > window.innerWidth);
+  const orientationTimeoutRef = useRef<NodeJS.Timeout>();
+
+  useEffect(() => {
+    const handleOrientationChange = () => {
+      if (orientationTimeoutRef.current) {
+        clearTimeout(orientationTimeoutRef.current);
+      }
+      
+      orientationTimeoutRef.current = setTimeout(() => {
+        setIsPortrait(window.innerHeight > window.innerWidth);
+      }, 100);
+    };
+
+    window.addEventListener('resize', handleOrientationChange);
+    window.addEventListener('orientationchange', handleOrientationChange);
+
+    return () => {
+      window.removeEventListener('resize', handleOrientationChange);
+      window.removeEventListener('orientationchange', handleOrientationChange);
+      if (orientationTimeoutRef.current) {
+        clearTimeout(orientationTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Modify click handler for controls with debounce
+  const handleVideoClick = useCallback((e: React.MouseEvent) => {
+    if (e.target === containerRef.current) {
+      setShowControls(prev => !prev);
+      setShowQualityMenu(false);
+      setShowAudioMenu(false);
+    }
+  }, []);
+
+  // Add touch handler for controls with improved handling
+  const handleVideoTouch = useCallback((e: React.TouchEvent) => {
+    if (e.target === containerRef.current) {
+      e.preventDefault(); // Prevent default touch behavior
+      setShowControls(prev => !prev);
+      setShowQualityMenu(false);
+      setShowAudioMenu(false);
+    }
+  }, []);
+
   return (
     <div
       ref={containerRef}
@@ -1133,15 +1242,10 @@ const VideoPlayer = ({
       }`}
       onMouseMove={!isMobile ? showControlsTemporarily : undefined}
       onMouseLeave={() => !isMobile && setShowControls(false)}
-      onTouchStart={handleTouchStart}
+      onTouchStart={handleVideoTouch}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      onClick={(e) => {
-        if (showControls && e.target === containerRef.current) {
-          setShowControls(false);
-          setShowQualityMenu(false);
-        }
-      }}
+      onClick={handleVideoClick}
     >
       {/* Video Container */}
       <div className="absolute inset-0 flex items-center justify-center bg-black">
@@ -1304,8 +1408,8 @@ const VideoPlayer = ({
 
           {/* Bottom Controls - Mobile Optimized */}
           <div className="absolute bottom-0 left-0 right-0 p-4">
-            {/* Progress Bar - Taller on mobile */}
-            <div className="relative mb-6">
+            {/* Progress Bar - Reduced margin */}
+            <div className="relative mb-2">
               <div
                 ref={progressRef}
                 className={`w-full ${isMobile ? 'h-2' : 'h-1.5'} bg-gray-600/50 cursor-pointer group relative rounded-full overflow-hidden`}
@@ -1331,23 +1435,10 @@ const VideoPlayer = ({
                   <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-cinewave-red rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-150 shadow-lg transform scale-100 group-hover:scale-110" />
                 </div>
               </div>
-
-              {/* Time Tooltip */}
-              {hoverPosition && progressRef.current && (
-                <div
-                  className="fixed transform -translate-x-1/2 bg-black/90 text-white px-2 py-1 rounded text-sm pointer-events-none whitespace-nowrap z-[10001]"
-                  style={{
-                    left: `${hoverPosition.x}px`,
-                    top: `${progressRef.current.getBoundingClientRect().top - 30}px`,
-                  }}
-                >
-                  {formatTime(hoverPosition.time)}
-                </div>
-              )}
             </div>
 
-            {/* Control Buttons - Mobile Optimized */}
-            <div className="flex items-center justify-between px-2">
+            {/* Control Buttons - Adjusted padding */}
+            <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-4">
                 <button
                   onClick={toggleMute}
@@ -1377,8 +1468,8 @@ const VideoPlayer = ({
               </div>
 
               <div className="flex items-center gap-4">
-                {/* Audio Track Selector */}
-                {audioTracks.length > 1 && (
+                {/* Audio Track Selector - Hidden in portrait mode on mobile */}
+                {audioTracks.length > 1 && (!isMobile || !isPortrait) && (
                   <div className="relative z-[10002]">
                     <button
                       onClick={() => setShowAudioMenu(!showAudioMenu)}
@@ -1414,8 +1505,8 @@ const VideoPlayer = ({
                   </div>
                 )}
 
-                {/* Quality Selector */}
-                {availableQualities.length > 1 && (
+                {/* Quality Selector - Hidden in portrait mode on mobile */}
+                {availableQualities.length > 1 && (!isMobile || !isPortrait) && (
                   <div className="relative z-[10002]">
                     <button
                       onClick={() => setShowQualityMenu(!showQualityMenu)}
@@ -1475,7 +1566,7 @@ const VideoPlayer = ({
                     </div>
                   )}
 
-                {/* Fullscreen Toggle - Moved to last position */}
+                {/* Fullscreen Toggle */}
                 <button
                   onClick={toggleFullscreen}
                   className="text-white hover:text-cinewave-red transition z-[10002] relative ml-4 p-2"
