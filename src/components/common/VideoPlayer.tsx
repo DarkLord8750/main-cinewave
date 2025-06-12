@@ -120,29 +120,6 @@ const VideoPlayer = ({
   // Add debounce ref for quality changes
   const qualityChangeTimeoutRef = useRef<NodeJS.Timeout>();
 
-  useEffect(() => {
-    const handleOrientationChange = () => {
-      if (orientationTimeoutRef.current) {
-        clearTimeout(orientationTimeoutRef.current);
-      }
-      
-      orientationTimeoutRef.current = setTimeout(() => {
-        setIsPortrait(window.innerHeight > window.innerWidth);
-      }, 100);
-    };
-
-    window.addEventListener('resize', handleOrientationChange);
-    window.addEventListener('orientationchange', handleOrientationChange);
-
-    return () => {
-      window.removeEventListener('resize', handleOrientationChange);
-      window.removeEventListener('orientationchange', handleOrientationChange);
-      if (orientationTimeoutRef.current) {
-        clearTimeout(orientationTimeoutRef.current);
-      }
-    };
-  }, []);
-
   // Add effect to manage video playing state
   useEffect(() => {
     setIsVideoPlaying(true);
@@ -354,9 +331,9 @@ const VideoPlayer = ({
                 } catch (error) {
                   console.error('Error restoring audio track after tracks update:', error);
                 }
-                }
               }
-            });
+            }
+          });
 
             setHlsInstance(hls);
           } catch (error) {
@@ -1210,6 +1187,33 @@ const VideoPlayer = ({
     video.addEventListener('error', handleVideoError);
     return () => video.removeEventListener('error', handleVideoError);
   }, [handleVideoError]);
+
+  // Add orientation change handler with debounce
+  const [isPortrait, setIsPortrait] = useState(window.innerHeight > window.innerWidth);
+  const orientationTimeoutRef = useRef<NodeJS.Timeout>();
+
+  useEffect(() => {
+    const handleOrientationChange = () => {
+      if (orientationTimeoutRef.current) {
+        clearTimeout(orientationTimeoutRef.current);
+      }
+      
+      orientationTimeoutRef.current = setTimeout(() => {
+        setIsPortrait(window.innerHeight > window.innerWidth);
+      }, 100);
+    };
+
+    window.addEventListener('resize', handleOrientationChange);
+    window.addEventListener('orientationchange', handleOrientationChange);
+
+    return () => {
+      window.removeEventListener('resize', handleOrientationChange);
+      window.removeEventListener('orientationchange', handleOrientationChange);
+      if (orientationTimeoutRef.current) {
+        clearTimeout(orientationTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Modify click handler for controls with debounce
   const handleVideoClick = useCallback((e: React.MouseEvent) => {
