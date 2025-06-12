@@ -1232,9 +1232,13 @@ const VideoPlayer = ({
 
   // Modify click handler for controls with debounce
   const handleVideoClick = useCallback((e: React.MouseEvent) => {
-    // Check if the click is on the video container itself
+    // Check if the click is on the video container itself or its immediate children
     const target = e.target as HTMLElement;
-    if (target === containerRef.current || target === videoRef.current) {
+    const isVideoArea = target === containerRef.current || 
+                       target === videoRef.current ||
+                       target.parentElement === containerRef.current;
+    
+    if (isVideoArea) {
       setShowControls(prev => !prev);
       setShowQualityMenu(false);
       setShowAudioMenu(false);
@@ -1482,7 +1486,10 @@ const VideoPlayer = ({
             </div>
 
             {/* Control Buttons */}
-            <div className="flex items-center justify-between px-1">
+            <div 
+              className="flex items-center justify-between px-1"
+              onClick={handleControlClick}
+            >
               <div className="flex items-center gap-4">
                 {/* Volume Controls */}
                 <button
