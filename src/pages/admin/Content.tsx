@@ -6,7 +6,7 @@ import SeriesManager from '../../components/admin/SeriesManager';
 import ContentTable from '../../components/admin/ContentTable';
 
 // Define ratings for the dropdown
-const ratings = ["G", "PG", "PG-13", "R", "NC-17", "TV-Y", "TV-G", "TV-PG", "TV-14", "TV-MA"];
+const ratings = ["G","A", "PG", "PG-13", "R", "NC-17", "TV-Y", "TV-G", "TV-PG", "TV-14", "TV-MA"];
 
 // Flexible config for video qualities (only for movies)
 const videoQualities = [
@@ -135,7 +135,7 @@ const ContentManagement = () => {
         parsedUrl.pathname.toLowerCase().endsWith(ext)
       );
       // Only check extensions for media URLs, not for trailer URLs (which might be YouTube/Vimeo)
-      if (url.includes('videoUrl') || url.includes('Image')) {
+      if (url.includes('videoUrl') || url.includes('Image') || url.includes('master_url')) {
         return hasValidExtension;
       }
       return true;
@@ -256,6 +256,10 @@ const ContentManagement = () => {
       cast: cast.filter(member => member.name.trim() !== ''),
       // Only include video URLs for movies
       ...(type === 'movie' ? {
+        master_url: formData.get('master_url') as string || undefined,
+        master_url_480p: formData.get('master_url_480p') as string || undefined,
+        master_url_720p: formData.get('master_url_720p') as string || undefined,
+        master_url_1080p: formData.get('master_url_1080p') as string || undefined,
         videoUrl480p: formData.get('videoUrl480p') as string || undefined,
         videoUrl720p: formData.get('videoUrl720p') as string || undefined,
         videoUrl1080p: formData.get('videoUrl1080p') as string || undefined,
@@ -431,15 +435,41 @@ const ContentManagement = () => {
                 {/* Video Quality URLs - Only show for movies */}
                 {(modalMode === 'add-movie' || (selectedContent && selectedContent.type === 'movie')) && (
                   <div className="space-y-4">
-                    <h4 className="font-medium text-gray-900">Video Quality URLs</h4>
+                    <h4 className="font-medium text-black">Video Quality URLs</h4>
                     <div className="grid grid-cols-2 gap-4">
                       {videoQualities.map(q => (
                         <div className="space-y-2" key={q.name}>
-                          <label className="block text-sm font-medium text-gray-700">{q.label} URL</label>
+                          <label className="block text-sm font-medium text-black">{q.label} URL</label>
                           <input
                             type="url"
                             name={q.name}
                             defaultValue={selectedContent?.[q.name] as string | undefined}
+                            className="mt-1 text-black block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Master URL for Series/Movies */}
+                {(modalMode === 'add-movie' || (selectedContent && selectedContent.type === 'movie')) && (
+                  <div className="space-y-4">
+                    <h4 className="font-medium text-black">Master URLs</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      {[
+                        { label: "Master URL", name: "master_url" as keyof Content },
+                        { label: "Master URL 480p", name: "master_url_480p" as keyof Content },
+                        { label: "Master URL 720p", name: "master_url_720p" as keyof Content },
+                        { label: "Master URL 1080p", name: "master_url_1080p" as keyof Content },
+                      ].map(q => (
+                        <div className="space-y-2" key={q.name}>
+                          <label className="block text-sm font-medium text-black">{q.label}</label>
+                          <input
+                            type="url"
+                            name={q.name}
+                            defaultValue={selectedContent?.[q.name] as string | undefined}
+                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                             className="w-full px-3 py-2 border rounded-md text-black focus:outline-none focus:ring-2 focus:ring-[#E50914] focus:border-transparent"
                           />
                           {validationErrors[q.name] && (
