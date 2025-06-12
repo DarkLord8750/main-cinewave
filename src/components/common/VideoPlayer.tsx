@@ -769,6 +769,13 @@ const VideoPlayer = ({
   // Add touch event handlers
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length !== 1) return;
+    
+    const touch = e.touches[0];
+    setTouchStartX(touch.clientX);
+    setTouchStartY(touch.clientY);
+    setTouchStartTime(Date.now());
+    
+    // Handle tap detection
     handleTap(e);
   }, [handleTap]);
 
@@ -1249,7 +1256,7 @@ const VideoPlayer = ({
       }`}
       onMouseMove={!isMobile ? showControlsTemporarily : undefined}
       onMouseLeave={() => !isMobile && setShowControls(false)}
-      onTouchStart={handleVideoTouch}
+      onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onClick={handleVideoClick}
