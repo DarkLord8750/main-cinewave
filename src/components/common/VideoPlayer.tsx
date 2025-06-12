@@ -1223,6 +1223,7 @@ const VideoPlayer = ({
   // Modify click handler for controls with debounce
   const handleVideoClick = useCallback((e: React.MouseEvent) => {
     if (e.target === containerRef.current) {
+      // Only toggle controls visibility, don't trigger play/pause
       setShowControls(prev => !prev);
       setShowQualityMenu(false);
       setShowAudioMenu(false);
@@ -1233,6 +1234,7 @@ const VideoPlayer = ({
   const handleVideoTouch = useCallback((e: React.TouchEvent) => {
     if (e.target === containerRef.current) {
       e.preventDefault(); // Prevent default touch behavior
+      // Only toggle controls visibility, don't trigger play/pause
       setShowControls(prev => !prev);
       setShowQualityMenu(false);
       setShowAudioMenu(false);
@@ -1247,7 +1249,7 @@ const VideoPlayer = ({
       }`}
       onMouseMove={!isMobile ? showControlsTemporarily : undefined}
       onMouseLeave={() => !isMobile && setShowControls(false)}
-      onTouchStart={handleTouchStart}
+      onTouchStart={handleVideoTouch}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onClick={handleVideoClick}
@@ -1259,7 +1261,6 @@ const VideoPlayer = ({
           className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 min-w-full min-h-full w-auto h-auto object-contain transition-all duration-500 ${
             isQualityChanging ? 'opacity-50 scale-[0.98]' : 'opacity-100 scale-100'
           }`}
-          onClick={togglePlay}
           onPlay={() => {
             console.log("Video play event");
             setIsPlaying(true);
