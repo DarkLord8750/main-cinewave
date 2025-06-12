@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+// import JWPlayer from '../components/common/JWPlayer';
 import VideoPlayer from '../components/common/VideoPlayer';
 import { useContentStore } from '../stores/contentStore';
 import { useAuthStore } from '../stores/authStore';
@@ -37,6 +38,10 @@ interface Episode {
   video_url_720p?: string;
   video_url_1080p?: string;
   video_url_4k?: string;
+  master_url?: string;
+  master_url_480p?: string;
+  master_url_720p?: string;
+  master_url_1080p?: string;
 }
 
 const SeriesPage = () => {
@@ -223,15 +228,38 @@ const SeriesPage = () => {
     <div className="min-h-screen bg-netflix-dark">
       {isFullscreen && showVideo && currentEpisode ? (
         <div className="fixed inset-0 z-50 bg-black">
+          {/* Previous VideoPlayer implementation 
           <VideoPlayer
             title={series.title + ' - ' + currentEpisode.title}
             description={currentEpisode.description}
-            videoUrls={{
-              '480p': currentEpisode.video_url_480p || '',
-              '720p': currentEpisode.video_url_720p || '',
-              '1080p': currentEpisode.video_url_1080p || '',
-              '4k': currentEpisode.video_url_4k || '',
+            masterUrl={currentEpisode.master_url || ''}
+            masterUrl480p={currentEpisode.master_url_480p || ''}
+            masterUrl720p={currentEpisode.master_url_720p || ''}
+            masterUrl1080p={currentEpisode.master_url_1080p || ''}
+            contentId={series.id}
+            onClose={handleClose}
+            isFullScreen={true}
+            autoPlay={true}
+            episodes={episodes}
+            currentEpisodeIndex={currentEpisodeIndex}
+            onChangeEpisode={handleChangeEpisode}
+            episodeInfo={{
+              season: selectedSeason?.season_number || 1,
+              episode: currentEpisode.episode_number,
+              title: currentEpisode.title,
             }}
+            startTime={startTime}
+          />
+          */}
+          
+          {/* New VideoPlayer implementation */}
+          <VideoPlayer
+            title={series.title + ' - ' + currentEpisode.title}
+            description={currentEpisode.description}
+            masterUrl={currentEpisode.master_url || ''}
+            masterUrl480p={currentEpisode.master_url_480p || ''}
+            masterUrl720p={currentEpisode.master_url_720p || ''}
+            masterUrl1080p={currentEpisode.master_url_1080p || ''}
             contentId={series.id}
             onClose={handleClose}
             isFullScreen={true}
