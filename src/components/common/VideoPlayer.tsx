@@ -93,6 +93,13 @@ const VideoPlayer = ({
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
   const [touchStartTime, setTouchStartTime] = useState<number | null>(null);
+  const [touchType, setTouchType] = useState<'seek' | 'volume' | null>(null);
+  const [touchProgress, setTouchProgress] = useState<number | null>(null);
+  const [touchVolume, setTouchVolume] = useState<number | null>(null);
+  const [showTouchIndicator, setShowTouchIndicator] = useState(false);
+  const [touchIndicatorPosition, setTouchIndicatorPosition] = useState({ x: 0, y: 0 });
+  const [touchIndicatorValue, setTouchIndicatorValue] = useState<number | null>(null);
+  const [touchIndicatorType, setTouchIndicatorType] = useState<'seek' | 'volume' | null>(null);
   const [lastTapTime, setLastTapTime] = useState(0);
   const [lastTapPosition, setLastTapPosition] = useState<{ x: number; y: number } | null>(null);
   const [seekAmount, setSeekAmount] = useState<number | null>(null);
@@ -122,6 +129,9 @@ const VideoPlayer = ({
 
   // Add state for tracking if we're interacting with controls
   const [isInteractingWithControls, setIsInteractingWithControls] = useState(false);
+
+  // Add state for touch controls
+  const [isTouchingControls, setIsTouchingControls] = useState(false);
 
   // Add effect to manage video playing state
   useEffect(() => {
@@ -654,16 +664,20 @@ const VideoPlayer = ({
     }
   };
 
-  const showControlsTemporarily = () => {
+  // Function to show controls temporarily
+  const showControlsTemporarily = useCallback(() => {
     setShowControls(true);
-    if (isPlaying) {
+    if (controlsTimeoutRef.current) {
       clearTimeout(controlsTimeoutRef.current);
-      controlsTimeoutRef.current = setTimeout(() => {
+    }
+    controlsTimeoutRef.current = setTimeout(() => {
+      if (isPlaying) {
         setShowControls(false);
         setShowQualityMenu(false);
-      }, 3000);
-    }
-  };
+        setShowAudioMenu(false);
+      }
+    }, 2000); // Hide after 2 seconds
+  }, [isPlaying]);
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -738,39 +752,18 @@ const VideoPlayer = ({
     showControlsTemporarily();
   };
 
-  // Add tap handlers
-  const handleTap = useCallback((e: React.TouchEvent) => {
-    const currentTime = Date.now();
-    const touch = e.touches[0];
-    
-    // Check for double tap
-    if (currentTime - lastTapTime < 300 && lastTapPosition) {
-      const screenWidth = window.innerWidth;
-      const tapX = touch.clientX;
-      
-      // Determine if tap is on left or right side
-      if (tapX < screenWidth / 2) {
-        seek(-10); // Seek backward
-        setShowSeekIndicator(true);
-        setTimeout(() => setShowSeekIndicator(false), 1000);
-      } else {
-        seek(10); // Seek forward
-        setShowSeekIndicator(true);
-        setTimeout(() => setShowSeekIndicator(false), 1000);
-      }
-    } else {
-      // Single tap - toggle controls
-      setShowControls(prev => !prev);
-      setShowQualityMenu(false);
-      setShowAudioMenu(false);
-    }
-    
-    setLastTapTime(currentTime);
-    setLastTapPosition({ x: touch.clientX, y: touch.clientY });
-  }, [lastTapTime, lastTapPosition]);
-
-  // Add touch event handlers
+  // Enhanced touch handlers
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    // Check if touch is on controls
+    const target = e.target as HTMLElement;
+    const isControlElement = target.closest('.video-controls') !== null;
+    
+    if (isControlElement) {
+      setIsTouchingControls(true);
+      showControlsTemporarily();
+      return;
+    }
+
     if (e.touches.length !== 1) return;
     
     const touch = e.touches[0];
@@ -778,59 +771,99 @@ const VideoPlayer = ({
     setTouchStartY(touch.clientY);
     setTouchStartTime(Date.now());
     
-    // Handle tap detection
-    handleTap(e);
-  }, [handleTap]);
+    // Check for double tap
+    const currentTime = Date.now();
+    if (currentTime - lastTapTime < 300 && lastTapPosition) {
+      const screenWidth = window.innerWidth;
+      const tapX = touch.clientX;
+      
+      if (tapX < screenWidth / 2) {
+        seek(-10);
+        setShowSeekIndicator(true);
+        setSeekAmount(-10);
+        setTimeout(() => setShowSeekIndicator(false), 1000);
+      } else {
+        seek(10);
+        setShowSeekIndicator(true);
+        setSeekAmount(10);
+        setTimeout(() => setShowSeekIndicator(false), 1000);
+      }
+    } else {
+      // Single tap - show controls
+      showControlsTemporarily();
+    }
+    
+    setLastTapTime(currentTime);
+    setLastTapPosition({ x: touch.clientX, y: touch.clientY });
+  }, [lastTapTime, lastTapPosition, showControlsTemporarily]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (isTouchingControls) return;
     if (!touchStartX || !touchStartY || !touchStartTime) return;
 
     const touch = e.touches[0];
     const deltaX = touch.clientX - touchStartX;
     const deltaY = touch.clientY - touchStartY;
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
 
-    // Only handle horizontal swipes
-    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
-      const seekTime = Math.round((deltaX / window.innerWidth) * 30); // More precise seeking
+    // Determine touch type on first significant movement
+    if (!touchType) {
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 20) {
+        setTouchType('seek');
+      } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 20) {
+        setTouchType('volume');
+      }
+    }
+
+    // Handle seek
+    if (touchType === 'seek') {
+      const seekTime = Math.round((deltaX / screenWidth) * 30);
       setSeekAmount(seekTime);
       setShowSeekIndicator(true);
+      showControlsTemporarily();
       e.preventDefault();
     }
-  }, [touchStartX, touchStartY, touchStartTime]);
+    // Handle volume
+    else if (touchType === 'volume') {
+      const volumeChange = -Math.round((deltaY / screenHeight) * 100);
+      const newVolume = Math.max(0, Math.min(100, volume * 100 + volumeChange));
+      handleVolumeChange(newVolume);
+      showControlsTemporarily();
+      e.preventDefault();
+    }
+  }, [touchStartX, touchStartY, touchStartTime, touchType, volume, isTouchingControls, showControlsTemporarily]);
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (isTouchingControls) {
+      setIsTouchingControls(false);
+      return;
+    }
+
     if (!touchStartX || !touchStartY || !touchStartTime) return;
 
     // Handle seek
-    if (seekAmount) {
+    if (touchType === 'seek' && seekAmount) {
       seek(seekAmount);
       setShowSeekIndicator(false);
     }
 
+    // Reset touch state
     setTouchStartX(null);
     setTouchStartY(null);
     setTouchStartTime(null);
+    setTouchType(null);
     setSeekAmount(null);
-  }, [touchStartX, touchStartY, touchStartTime, seekAmount]);
+  }, [touchStartX, touchStartY, touchStartTime, touchType, seekAmount, isTouchingControls]);
 
-  // Add seek indicator component
-  const SeekIndicator = ({ amount }: { amount: number }) => (
-    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-      <div className="bg-black/80 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-        {amount > 0 ? (
-          <>
-            <RotateCw size={24} />
-            <span>+{Math.abs(amount)}s</span>
-          </>
-        ) : (
-          <>
-            <RotateCw size={24} />
-            <span>-{Math.abs(amount)}s</span>
-          </>
-        )}
-      </div>
-    </div>
-  );
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Keyboard and Accessibility Enhancements
   useEffect(() => {
@@ -940,6 +973,7 @@ const VideoPlayer = ({
 
   const handleProgressMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!progressRef.current) return;
+    e.stopPropagation();
     setDragProgress(null);
     updateSeekFromEvent(e);
     setShowControls(true);
@@ -1008,6 +1042,7 @@ const VideoPlayer = ({
 
   const handleProgressTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     if (!progressRef.current) return;
+    e.stopPropagation();
     setDragProgress(null);
     updateSeekFromTouchEvent(e);
     setShowControls(true);
@@ -1015,6 +1050,7 @@ const VideoPlayer = ({
     window.addEventListener("touchmove", handleDocumentTouchMove);
     window.addEventListener("touchend", handleDocumentTouchEnd);
   };
+
   const updateSeekFromEvent = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!progressRef.current) return;
     const rect = progressRef.current.getBoundingClientRect();
@@ -1022,6 +1058,7 @@ const VideoPlayer = ({
     const newTime = Math.max(0, Math.min(duration, percent * duration));
     setDragProgress(newTime);
   };
+
   const updateSeekFromTouchEvent = (e: React.TouchEvent<HTMLDivElement>) => {
     if (!progressRef.current) return;
     const touch = e.touches[0];
@@ -1250,6 +1287,25 @@ const VideoPlayer = ({
     e.stopPropagation();
   }, []);
 
+  // Add seek indicator component
+  const SeekIndicator = ({ amount }: { amount: number }) => (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <div className="bg-black/80 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+        {amount > 0 ? (
+          <>
+            <RotateCw size={24} />
+            <span>+{Math.abs(amount)}s</span>
+          </>
+        ) : (
+          <>
+            <RotateCcw size={24} />
+            <span>-{Math.abs(amount)}s</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div
       ref={containerRef}
@@ -1367,7 +1423,7 @@ const VideoPlayer = ({
 
       {showControls && (
         <div 
-          className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent z-[10000]"
+          className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent z-[10000] video-controls"
           onClick={handleControlClick}
         >
           {/* Title Bar */}
@@ -1451,22 +1507,9 @@ const VideoPlayer = ({
             <div className="relative mb-2">
               <div
                 ref={progressRef}
-                className={`w-full ${isMobile ? 'h-2' : 'h-1.5'} bg-gray-600/50 cursor-pointer group relative rounded-full overflow-hidden`}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  handleProgressMouseDown(e);
-                }}
-                onTouchStart={(e) => {
-                  e.stopPropagation();
-                  handleProgressTouchStart(e);
-                }}
-                onMouseMove={(e) => {
-                  e.stopPropagation();
-                  handleProgressHover(e);
-                }}
-                onMouseLeave={() => {
-                  setHoverPosition(null);
-                }}
+                className={`w-full ${isMobile ? 'h-3' : 'h-2'} bg-gray-600/50 cursor-pointer group relative rounded-full overflow-hidden`}
+                onMouseDown={handleProgressMouseDown}
+                onTouchStart={handleProgressTouchStart}
                 style={{ touchAction: "none" }}
               >
                 {/* Progress Background */}
@@ -1474,7 +1517,7 @@ const VideoPlayer = ({
                 
                 {/* Progress Fill */}
                 <div
-                  className="h-full bg-cinewave-red relative group-hover:h-2 transition-all duration-150 ease-out"
+                  className="h-full bg-cinewave-red relative group-hover:h-full transition-all duration-150 ease-out"
                   style={{
                     width: `${((dragProgress !== null ? dragProgress : currentTime) / duration) * 100}%`,
                   }}
@@ -1490,31 +1533,86 @@ const VideoPlayer = ({
               className="flex items-center justify-between px-1"
               onClick={handleControlClick}
             >
+              {/* Left side controls */}
               <div className="flex items-center gap-4">
                 {/* Volume Controls */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleMute();
-                  }}
-                  className="text-white hover:text-cinewave-red transition p-2"
-                  aria-label={isMuted ? "Unmute" : "Mute"}
-                >
-                  {isMuted ? <VolumeX size={isMobile ? 28 : 24} /> : <Volume2 size={isMobile ? 28 : 24} />}
-                </button>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={isMuted ? 0 : volume * 100}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    handleVolumeChange(parseInt(e.target.value));
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  className={`${isMobile ? 'w-32' : 'w-24'}`}
-                  aria-label="Volume"
-                />
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleMute();
+                    }}
+                    className="text-white hover:text-cinewave-red transition p-2"
+                    aria-label={isMuted ? "Unmute" : "Mute"}
+                  >
+                    {isMuted ? <VolumeX size={isMobile ? 28 : 24} /> : <Volume2 size={isMobile ? 28 : 24} />}
+                  </button>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={isMuted ? 0 : volume * 100}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      handleVolumeChange(parseInt(e.target.value));
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className={`${isMobile ? 'w-32' : 'w-24'}`}
+                    aria-label="Volume"
+                  />
+                </div>
+
+                {/* Time Display */}
+                <div className="flex items-center gap-1 text-white text-sm">
+                  <span className="font-medium">{formatTime(currentTime)}</span>
+                  <span className="text-gray-400">/</span>
+                  <span className="text-gray-400">{formatTime(duration)}</span>
+                </div>
+              </div>
+
+              {/* Right side controls */}
+              <div className="flex items-center gap-4">
+                {/* Audio Track Selector */}
+                {audioTracks.length > 1 && (!isMobile || !isPortrait) && (
+                  <div className="relative z-[10002]">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowAudioMenu(!showAudioMenu);
+                      }}
+                      className={`text-white hover:text-cinewave-red transition flex items-center gap-1 p-2 ${
+                        isQualityChanging ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                      disabled={isQualityChanging}
+                      aria-label="Audio track settings"
+                    >
+                      <Headphones size={20} />
+                      <span className="text-sm">
+                        {audioTracks.find(track => track.id === currentAudioTrack)?.label || 
+                         (audioTracks.length > 0 ? audioTracks[0].label : 'Audio')}
+                      </span>
+                    </button>
+                    {showAudioMenu && (
+                      <div className="absolute bottom-full right-0 mb-2 bg-black/90 rounded-md overflow-hidden shadow-lg">
+                        {audioTracks.map((track) => (
+                          <button
+                            key={track.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAudioTrackChange(track.id);
+                            }}
+                            disabled={isQualityChanging}
+                            className={`block w-full px-4 py-2 text-sm text-left hover:bg-cinewave-red transition ${
+                              currentAudioTrack === track.id ? "bg-cinewave-red" : ""
+                            } ${isQualityChanging ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            {track.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Quality Selector */}
                 {availableQualities.length > 1 && (!isMobile || !isPortrait) && (
@@ -1537,7 +1635,6 @@ const VideoPlayer = ({
                           : availableQualities.find(q => q.value === currentQuality)?.label || currentQuality.toUpperCase()}
                       </span>
                     </button>
-
                     {showQualityMenu && (
                       <div className="absolute bottom-full right-0 mb-2 bg-black/90 rounded-md overflow-hidden shadow-lg">
                         {availableQualities.map((quality) => (
@@ -1560,13 +1657,42 @@ const VideoPlayer = ({
                   </div>
                 )}
 
+                {/* Episode Navigation */}
+                {episodes &&
+                  episodes.length > 0 &&
+                  typeof currentEpisodeIndex === "number" &&
+                  onChangeEpisode && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onChangeEpisode(currentEpisodeIndex - 1);
+                        }}
+                        disabled={currentEpisodeIndex === 0}
+                        className="px-3 py-1 rounded bg-gray-700 text-white disabled:opacity-50"
+                      >
+                        Previous
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onChangeEpisode(currentEpisodeIndex + 1);
+                        }}
+                        disabled={currentEpisodeIndex === episodes.length - 1}
+                        className="px-3 py-1 rounded bg-gray-700 text-white disabled:opacity-50"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
+
                 {/* Fullscreen Toggle */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     toggleFullscreen();
                   }}
-                  className="text-white hover:text-cinewave-red transition z-[10002] relative ml-4 p-2"
+                  className="text-white hover:text-cinewave-red transition p-2"
                   aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
                 >
                   {isFullscreen ? <Minimize size={24} /> : <Maximize size={24} />}
