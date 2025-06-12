@@ -6,7 +6,7 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 import VideoPlayer from '../components/common/VideoPlayer';
 import { useContentStore } from '../stores/contentStore';
 import { useAuthStore } from '../stores/authStore';
-import { Play, Plus, Check, ChevronDown, X } from 'lucide-react';
+import { Play, Plus, Check, ChevronDown, X, Download } from 'lucide-react';
 import { useWatchHistoryStore } from '../stores/watchHistoryStore';
 
 interface Series {
@@ -57,6 +57,7 @@ const SeriesPage = () => {
   const [currentEpisode, setCurrentEpisode] = useState<Episode | null>(null);
   const [similarSeries, setSimilarSeries] = useState<Series[]>([]);
   const [showSeasonPicker, setShowSeasonPicker] = useState(false);
+  const [showDownloadMenu, setShowDownloadMenu] = useState<string | null>(null);
 
   // My List logic
   const { isInMyList, addToMyList, removeFromMyList } = useContentStore();
@@ -224,6 +225,44 @@ const SeriesPage = () => {
     : null;
   const startTime = watchProgress?.watchTime || 0;
 
+  const getVideoUrls = (episode: Episode) => {
+    return {
+      videoUrl: episode.video_url_4k ?? '',
+      videoUrl480p: episode.video_url_480p ?? '',
+      videoUrl720p: episode.video_url_720p ?? '',
+      videoUrl1080p: episode.video_url_1080p ?? ''
+    };
+  };
+
+  const handleDownload = (episode: Episode, quality: string) => {
+    const urls = getVideoUrls(episode);
+    let url = '';
+    
+    switch (quality) {
+      case '1080p':
+        url = urls.videoUrl1080p;
+        break;
+      case '720p':
+        url = urls.videoUrl720p;
+        break;
+      case '480p':
+        url = urls.videoUrl480p;
+        break;
+      case '4K':
+        url = urls.videoUrl;
+        break;
+    }
+
+    if (url) {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${series?.title}_S${selectedSeason?.season_number}E${episode.episode_number}_${quality}.mp4`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-netflix-dark">
       {isFullscreen && showVideo && currentEpisode ? (
@@ -256,10 +295,7 @@ const SeriesPage = () => {
           <VideoPlayer
             title={series.title + ' - ' + currentEpisode.title}
             description={currentEpisode.description}
-            masterUrl={currentEpisode.master_url || ''}
-            masterUrl480p={currentEpisode.master_url_480p || ''}
-            masterUrl720p={currentEpisode.master_url_720p || ''}
-            masterUrl1080p={currentEpisode.master_url_1080p || ''}
+            masterUrl={currentEpisode.master_url ?? ''}
             contentId={series.id}
             onClose={handleClose}
             isFullScreen={true}
@@ -441,37 +477,102 @@ const SeriesPage = () => {
                 </div>
               )}
 
-              {/* Episodes List */}
-              <div className="space-y-4">
-                {episodes.map(episode => (
-                  <div 
-                    key={episode.id} 
-                    className="p-4 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors cursor-pointer"
-                    onClick={() => handlePlay(episode)}
-                  >
-                    <div className="flex flex-col sm:flex-row items-start gap-4">
-                      <div className="flex items-center gap-3 w-full sm:w-auto">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handlePlay(episode);
-                          }}
-                          className="flex-shrink-0 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center"
-                        >
-                          <Play size={20} className="text-white" />
-                        </button>
-                        <div className="flex-1">
-                          <h3 className="text-white font-medium text-base sm:text-lg">
-                            {episode.episode_number}. {episode.title}
-                          </h3>
+              {/* Episode List */}
+              <div className="px-4 md:px-8 py-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl md:text-2xl font-bold text-white">
+                    Episodes
+                  </h2>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={handleSeasonClick}
+                      className="flex items-center space-x-2 px-4 py-2 bg-netflix-gray hover:bg-netflix-gray-hover rounded text-white"
+                    >
+                      <span>Season {selectedSeason?.season_number}</span>
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  {episodes.map((episode) => (
+                    <div
+                      key={episode.id}
+                      className="flex flex-col md:flex-row items-start md:items-center space-y-4 md:space-y-0 md:space-x-4 p-4 bg-netflix-gray rounded-lg"
+                    >
+                      <div className="relative w-full md:w-48 h-27 md:h-32 flex-shrink-0">
+                        <img
+                          src={series.posterImage}
+                          alt={episode.title}
+                          className="w-full h-full object-cover rounded"
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center gap-4 bg-black bg-opacity-50 hover:bg-opacity-40 transition-opacity">
+                          <button
+                            onClick={() => handlePlay(episode)}
+                            className="w-12 h-12 rounded-full bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center"
+                          >
+                            <Play className="w-6 h-6 text-white" />
+                          </button>
+                          <div className="relative">
+                            <button
+                              onClick={() => setShowDownloadMenu(showDownloadMenu === episode.id ? null : episode.id)}
+                              className="w-12 h-12 rounded-full bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center"
+                            >
+                              <Download className="w-6 h-6 text-white" />
+                            </button>
+                            {showDownloadMenu === episode.id && (
+                              <div className="absolute right-0 mt-2 w-48 bg-netflix-gray rounded-lg shadow-lg z-10">
+                                <div className="py-1">
+                                  {episode.video_url_1080p && (
+                                    <button
+                                      onClick={() => handleDownload(episode, '1080p')}
+                                      className="w-full px-4 py-2 text-left text-white hover:bg-netflix-gray-hover"
+                                    >
+                                      1080p
+                                    </button>
+                                  )}
+                                  {episode.video_url_720p && (
+                                    <button
+                                      onClick={() => handleDownload(episode, '720p')}
+                                      className="w-full px-4 py-2 text-left text-white hover:bg-netflix-gray-hover"
+                                    >
+                                      720p
+                                    </button>
+                                  )}
+                                  {episode.video_url_480p && (
+                                    <button
+                                      onClick={() => handleDownload(episode, '480p')}
+                                      className="w-full px-4 py-2 text-left text-white hover:bg-netflix-gray-hover"
+                                    >
+                                      480p
+                                    </button>
+                                  )}
+                                  {episode.video_url_4k && (
+                                    <button
+                                      onClick={() => handleDownload(episode, '4K')}
+                                      className="w-full px-4 py-2 text-left text-white hover:bg-netflix-gray-hover"
+                                    >
+                                      4K
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      <p className="text-netflix-gray text-sm line-clamp-2 sm:line-clamp-1 ml-0 sm:ml-4">
-                        {episode.description}
-                      </p>
+                      <div className="flex-grow">
+                        <div>
+                          <h3 className="text-lg font-semibold text-white">
+                            {episode.episode_number}. {episode.title}
+                          </h3>
+                          <p className="text-gray-400 mt-2">
+                            {episode.description}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           </div>
