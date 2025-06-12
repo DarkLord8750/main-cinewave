@@ -164,12 +164,12 @@ const VideoPlayer = ({
       if (hlsInstance) {
         hlsInstance.destroy();
         setHlsInstance(null);
-      }
+        }
 
-      // Initialize HLS if the browser supports it
+        // Initialize HLS if the browser supports it
       if (masterUrl && typeof Hls !== "undefined" && Hls.isSupported()) {
-        try {
-          const hls = new Hls({
+          try {
+            const hls = new Hls({
             // Optimize buffer settings
             maxBufferLength: 30,
             maxMaxBufferLength: 60,
@@ -180,10 +180,10 @@ const VideoPlayer = ({
             
             // Optimize loading settings
             manifestLoadingTimeOut: 20000,
-            manifestLoadingMaxRetry: 4,
+              manifestLoadingMaxRetry: 4,
             manifestLoadingRetryDelay: 1000,
             levelLoadingTimeOut: 20000,
-            levelLoadingMaxRetry: 4,
+              levelLoadingMaxRetry: 4,
             levelLoadingRetryDelay: 1000,
             fragLoadingTimeOut: 20000,
             fragLoadingMaxRetry: 4,
@@ -192,44 +192,44 @@ const VideoPlayer = ({
             // Optimize playback settings
             startLevel: -1, // Auto quality selection
             abrEwmaDefaultEstimate: 500000, // 500 kbps
-            testBandwidth: true,
-            progressive: true,
+              testBandwidth: true,
+              progressive: true,
             enableWorker: true,
             startFragPrefetch: true,
             
             // Optimize network settings
-            xhrSetup: function(xhr: XMLHttpRequest, url: string) {
+              xhrSetup: function(xhr: XMLHttpRequest, url: string) {
               xhr.withCredentials = false;
               if (url.indexOf('?') === -1) {
                 url += '?_=' + Date.now();
               } else {
                 url += '&_=' + Date.now();
               }
-            }
-          });
+              }
+            });
 
           // Add error recovery
-          hls.on(Hls.Events.ERROR, (event, data) => {
-            if (data.fatal) {
-              console.error("Fatal HLS error:", data);
-              
-              switch (data.type) {
-                case Hls.ErrorTypes.NETWORK_ERROR:
+            hls.on(Hls.Events.ERROR, (event, data) => {
+              if (data.fatal) {
+                console.error("Fatal HLS error:", data);
+                
+                switch (data.type) {
+                  case Hls.ErrorTypes.NETWORK_ERROR:
                   console.log("Network error, trying to recover...");
-                  hls.startLoad();
-                  break;
-                case Hls.ErrorTypes.MEDIA_ERROR:
+                      hls.startLoad();
+                    break;
+                  case Hls.ErrorTypes.MEDIA_ERROR:
                   console.log("Media error, trying to recover...");
-                  hls.recoverMediaError();
-                  break;
-                default:
+                    hls.recoverMediaError();
+                    break;
+                  default:
                   console.log("Fatal error, destroying HLS instance");
-                  hls.destroy();
-                  setHlsInstance(null);
-                  break;
+                    hls.destroy();
+                      setHlsInstance(null);
+                    break;
+                }
               }
-            }
-          });
+            });
 
           // Add buffer monitoring
           hls.on(Hls.Events.BUFFER_CREATED, () => {
@@ -335,12 +335,12 @@ const VideoPlayer = ({
             }
           });
 
-          setHlsInstance(hls);
-        } catch (error) {
-          console.error("Error initializing HLS:", error);
-          setPlayerError("Failed to initialize video player. Please try refreshing the page.");
+            setHlsInstance(hls);
+          } catch (error) {
+            console.error("Error initializing HLS:", error);
+            setPlayerError("Failed to initialize video player. Please try refreshing the page.");
         }
-      } else {
+                } else {
         console.error("No HLS playback method available for this browser");
         setPlayerError("Your browser does not support HLS video playback. Please try using Chrome, Firefox, Safari, or Edge.");
       }
@@ -618,13 +618,13 @@ const VideoPlayer = ({
       qualityChangeTimeoutRef.current = setTimeout(() => {
         try {
           hlsInstance.currentLevel = parseInt(quality);
-          setCurrentQuality(quality);
-          setShowQualityMenu(false);
-          
+    setCurrentQuality(quality);
+    setShowQualityMenu(false);
+    
           // Restore playback state and audio track
           if (videoRef.current) {
             videoRef.current.currentTime = currentTime;
-            if (wasPlaying) {
+        if (wasPlaying) {
               videoRef.current.play().catch(console.error);
             }
           }
@@ -1410,17 +1410,17 @@ const VideoPlayer = ({
           <div className="absolute bottom-0 left-0 right-0 p-4">
             {/* Progress Bar - Reduced margin */}
             <div className="relative mb-2">
-              <div
-                ref={progressRef}
+            <div
+              ref={progressRef}
                 className={`w-full ${isMobile ? 'h-2' : 'h-1.5'} bg-gray-600/50 cursor-pointer group relative rounded-full overflow-hidden`}
-                onMouseDown={handleProgressMouseDown}
-                onTouchStart={handleProgressTouchStart}
+              onMouseDown={handleProgressMouseDown}
+              onTouchStart={handleProgressTouchStart}
                 onMouseMove={handleProgressHover}
                 onMouseLeave={() => {
                   setHoverPosition(null);
                 }}
-                style={{ touchAction: "none" }}
-              >
+              style={{ touchAction: "none" }}
+            >
                 {/* Progress Background */}
                 <div className="absolute inset-0 bg-gray-600/30 group-hover:bg-gray-600/40 transition-colors" />
                 
