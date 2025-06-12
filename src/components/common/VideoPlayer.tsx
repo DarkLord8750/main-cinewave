@@ -1271,10 +1271,10 @@ const VideoPlayer = ({
           {/* Bottom Controls - Mobile Optimized */}
           <div className="absolute bottom-0 left-0 right-0 p-4">
             {/* Progress Bar - Taller on mobile */}
-            <div className={`relative ${isMobile ? 'h-2' : 'h-1.5'}`}>
+            <div className="relative mb-6">
               <div
                 ref={progressRef}
-                className={`w-full ${isMobile ? 'h-2' : 'h-1.5'} bg-gray-600/50 mb-4 cursor-pointer group relative rounded-full overflow-hidden`}
+                className={`w-full ${isMobile ? 'h-2' : 'h-1.5'} bg-gray-600/50 cursor-pointer group relative rounded-full overflow-hidden`}
                 onMouseDown={handleProgressMouseDown}
                 onTouchStart={handleProgressTouchStart}
                 onMouseMove={handleProgressHover}
@@ -1313,11 +1313,11 @@ const VideoPlayer = ({
             </div>
 
             {/* Control Buttons - Mobile Optimized */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between px-2">
               <div className="flex items-center gap-4">
                 <button
                   onClick={toggleMute}
-                  className="text-white hover:text-cinewave-red transition"
+                  className="text-white hover:text-cinewave-red transition p-2"
                   aria-label={isMuted ? "Unmute" : "Mute"}
                 >
                   {isMuted ? <VolumeX size={isMobile ? 28 : 24} /> : <Volume2 size={isMobile ? 28 : 24} />}
@@ -1348,7 +1348,7 @@ const VideoPlayer = ({
                   <div className="relative z-[10002]">
                     <button
                       onClick={() => setShowAudioMenu(!showAudioMenu)}
-                      className={`text-white hover:text-cinewave-red transition flex items-center gap-1 ${
+                      className={`text-white hover:text-cinewave-red transition flex items-center gap-1 p-2 ${
                         isQualityChanging ? 'opacity-50 cursor-not-allowed' : ''
                       }`}
                       disabled={isQualityChanging}
@@ -1385,7 +1385,7 @@ const VideoPlayer = ({
                   <div className="relative z-[10002]">
                     <button
                       onClick={() => setShowQualityMenu(!showQualityMenu)}
-                      className={`text-white hover:text-cinewave-red transition flex items-center gap-1 ${
+                      className={`text-white hover:text-cinewave-red transition flex items-center gap-1 p-2 ${
                         isQualityChanging ? 'opacity-50 cursor-not-allowed' : ''
                       }`}
                       disabled={isQualityChanging}
@@ -1444,7 +1444,7 @@ const VideoPlayer = ({
                 {/* Fullscreen Toggle - Moved to last position */}
                 <button
                   onClick={toggleFullscreen}
-                  className="text-white hover:text-cinewave-red transition z-[10002] relative ml-4"
+                  className="text-white hover:text-cinewave-red transition z-[10002] relative ml-4 p-2"
                   aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
                 >
                   {isFullscreen ? (
