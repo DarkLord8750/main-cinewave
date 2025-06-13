@@ -112,6 +112,7 @@ const VideoPlayer = ({
   const [availableQualities, setAvailableQualities] = useState<VideoQuality[]>([]);
   const [isQualityChanging, setIsQualityChanging] = useState(false);
   const [qualityChangeProgress, setQualityChangeProgress] = useState(0);
+  const [currentAutoQuality, setCurrentAutoQuality] = useState<string>("");
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
@@ -160,7 +161,7 @@ const VideoPlayer = ({
       // Store current playback position in the ref so it persists across renders
       savedPositionRef.current = video.currentTime > 0 ? video.currentTime : savedPositionRef.current;
       const wasPlaying = !video.paused;
-      const currentAudioTrackId = currentAudioTrack; // Save current audio track
+      const currentAudioTrackId = currentAudioTrack;
       
       console.log(`QUALITY CHANGE: Saving position ${savedPositionRef.current}s, video was ${wasPlaying ? 'playing' : 'paused'}, audio track: ${currentAudioTrackId}`);
       
@@ -184,12 +185,12 @@ const VideoPlayer = ({
       if (hlsInstance) {
         hlsInstance.destroy();
         setHlsInstance(null);
-        }
+      }
 
-        // Initialize HLS if the browser supports it
+      // Initialize HLS if the browser supports it
       if (masterUrl && typeof Hls !== "undefined" && Hls.isSupported()) {
-          try {
-            const hls = new Hls({
+        try {
+          const hls = new Hls({
             // Optimize buffer settings
             maxBufferLength: 30,
             maxMaxBufferLength: 60,
@@ -200,10 +201,10 @@ const VideoPlayer = ({
             
             // Optimize loading settings
             manifestLoadingTimeOut: 20000,
-              manifestLoadingMaxRetry: 4,
+            manifestLoadingMaxRetry: 4,
             manifestLoadingRetryDelay: 1000,
             levelLoadingTimeOut: 20000,
-              levelLoadingMaxRetry: 4,
+            levelLoadingMaxRetry: 4,
             levelLoadingRetryDelay: 1000,
             fragLoadingTimeOut: 20000,
             fragLoadingMaxRetry: 4,
@@ -212,77 +213,54 @@ const VideoPlayer = ({
             // Optimize playback settings
             startLevel: -1, // Auto quality selection
             abrEwmaDefaultEstimate: 500000, // 500 kbps
-              testBandwidth: true,
-              progressive: true,
+            testBandwidth: true,
+            progressive: true,
             enableWorker: true,
             startFragPrefetch: true,
             
             // Optimize network settings
-              xhrSetup: function(xhr: XMLHttpRequest, url: string) {
+            xhrSetup: function(xhr: XMLHttpRequest, url: string) {
               xhr.withCredentials = false;
               if (url.indexOf('?') === -1) {
                 url += '?_=' + Date.now();
               } else {
                 url += '&_=' + Date.now();
               }
-              }
-            });
+            }
+          });
 
           // Add error recovery
-            hls.on(Hls.Events.ERROR, (event, data) => {
-              if (data.fatal) {
-                console.error("Fatal HLS error:", data);
-                
-                switch (data.type) {
-                  case Hls.ErrorTypes.NETWORK_ERROR:
+          hls.on(Hls.Events.ERROR, (event, data) => {
+            if (data.fatal) {
+              console.error("Fatal HLS error:", data);
+              
+              switch (data.type) {
+                case Hls.ErrorTypes.NETWORK_ERROR:
                   console.log("Network error, trying to recover...");
-                      hls.startLoad();
-                    break;
-                  case Hls.ErrorTypes.MEDIA_ERROR:
+                  hls.startLoad();
+                  break;
+                case Hls.ErrorTypes.MEDIA_ERROR:
                   console.log("Media error, trying to recover...");
-                    hls.recoverMediaError();
-                    break;
-                  default:
+                  hls.recoverMediaError();
+                  break;
+                default:
                   console.log("Fatal error, destroying HLS instance");
-                    hls.destroy();
-                      setHlsInstance(null);
-                    break;
-                }
+                  hls.destroy();
+                  setHlsInstance(null);
+                  break;
               }
-            });
-
-          // Add buffer monitoring
-          hls.on(Hls.Events.BUFFER_CREATED, () => {
-            console.log("Buffer created");
-          });
-
-          hls.on(Hls.Events.BUFFER_APPENDED, () => {
-            console.log("Buffer appended");
-          });
-
-          hls.on(Hls.Events.BUFFER_FLUSHED, () => {
-            console.log("Buffer flushed");
+            }
           });
 
           // Add quality level monitoring
           hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
             console.log(`Switched to quality level: ${data.level}`);
-          });
-
-          // Add bandwidth monitoring
-          hls.on(Hls.Events.BANDWIDTH_ESTIMATE, (event, data) => {
-            console.log(`Bandwidth estimate: ${data.bandwidth} bps`);
-          });
-
-          // Fix HLS event types
-          interface HlsEventData {
-            level?: number;
-            bandwidth?: number;
-          }
-
-          // Add proper event types for monitoring
-          hls.on(Hls.Events.LEVEL_LOADED, (event: Event, data: HlsEventData) => {
-            console.log(`Level loaded: ${data.level}`);
+            
+            // Only update auto quality if we're in auto mode
+            if (currentQuality === "-1") {
+              const qualityLabel = hls.levels[data.level]?.height + "P";
+              setCurrentAutoQuality(qualityLabel);
+            }
           });
 
           // Attach media and load source
@@ -303,11 +281,18 @@ const VideoPlayer = ({
                 }))
               ];
               setAvailableQualities(hlsQualities);
-              // Only set initial quality to AUTO on first manifest parse
+              
+              // Set initial quality
               if (!initialQualitySet.current) {
-                hls.currentLevel = -1;
+                hls.currentLevel = -1; // Start with auto
                 setCurrentQuality("-1");
                 initialQualitySet.current = true;
+              } else {
+                // Restore previous quality if set
+                const qualityLevel = parseInt(currentQuality);
+                if (!isNaN(qualityLevel)) {
+                  hls.currentLevel = qualityLevel;
+                }
               }
             }
             
@@ -355,12 +340,12 @@ const VideoPlayer = ({
             }
           });
 
-            setHlsInstance(hls);
-          } catch (error) {
-            console.error("Error initializing HLS:", error);
-            setPlayerError("Failed to initialize video player. Please try refreshing the page.");
+          setHlsInstance(hls);
+        } catch (error) {
+          console.error("Error initializing HLS:", error);
+          setPlayerError("Failed to initialize video player. Please try refreshing the page.");
         }
-                } else {
+      } else {
         console.error("No HLS playback method available for this browser");
         setPlayerError("Your browser does not support HLS video playback. Please try using Chrome, Firefox, Safari, or Edge.");
       }
@@ -634,40 +619,42 @@ const VideoPlayer = ({
       const currentTime = videoRef.current?.currentTime || 0;
       const currentAudioTrackId = currentAudioTrack;
       
-      // Change quality with a slight delay to allow for smooth transition
-      qualityChangeTimeoutRef.current = setTimeout(() => {
-        try {
-          hlsInstance.currentLevel = parseInt(quality);
-    setCurrentQuality(quality);
-    setShowQualityMenu(false);
-    
-          // Restore playback state and audio track
-          if (videoRef.current) {
-            videoRef.current.currentTime = currentTime;
+      // Change quality immediately
+      const qualityLevel = parseInt(quality);
+      console.log(`Changing quality to level: ${qualityLevel}`);
+      
+      // Set the quality level directly
+      hlsInstance.currentLevel = qualityLevel;
+      setCurrentQuality(quality);
+      setShowQualityMenu(false);
+      
+      // If switching to auto, clear the current auto quality
+      if (quality === "-1") {
+        setCurrentAutoQuality("");
+      }
+      
+      // Restore playback state and audio track
+      if (videoRef.current) {
+        videoRef.current.currentTime = currentTime;
         if (wasPlaying) {
-              videoRef.current.play().catch(console.error);
-            }
-          }
-
-          if (currentAudioTrackId) {
-            try {
-              hlsInstance.audioTrack = parseInt(currentAudioTrackId);
-            } catch (error) {
-              console.error('Error restoring audio track after quality change:', error);
-            }
-          }
-        } catch (error) {
-          console.error('Error during quality change:', error);
-        } finally {
-          // Ensure loading state is cleared after a minimum duration
-          setTimeout(() => {
-            setIsQualityChanging(false);
-          }, 500);
+          videoRef.current.play().catch(console.error);
         }
-      }, 100);
+      }
+
+      if (currentAudioTrackId) {
+        try {
+          hlsInstance.audioTrack = parseInt(currentAudioTrackId);
+        } catch (error) {
+          console.error('Error restoring audio track after quality change:', error);
+        }
+      }
     } catch (error) {
-      console.error('Error initiating quality change:', error);
-      setIsQualityChanging(false);
+      console.error('Error during quality change:', error);
+    } finally {
+      // Ensure loading state is cleared after a minimum duration
+      setTimeout(() => {
+        setIsQualityChanging(false);
+      }, 500);
     }
   };
 
@@ -760,6 +747,12 @@ const VideoPlayer = ({
   };
 
   // Enhanced touch handlers
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (isTouchingControls) return;
+    // Prevent default touch move behavior
+    e.preventDefault();
+  }, [isTouchingControls]);
+
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     // Check if touch is on controls
     const target = e.target as HTMLElement;
@@ -774,9 +767,6 @@ const VideoPlayer = ({
     if (e.touches.length !== 1) return;
     
     const touch = e.touches[0];
-    setTouchStartX(touch.clientX);
-    setTouchStartY(touch.clientY);
-    setTouchStartTime(Date.now());
     
     // Check for double tap
     const currentTime = Date.now();
@@ -804,64 +794,11 @@ const VideoPlayer = ({
     setLastTapPosition({ x: touch.clientX, y: touch.clientY });
   }, [lastTapTime, lastTapPosition, showControlsTemporarily]);
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (isTouchingControls) return;
-    if (!touchStartX || !touchStartY || !touchStartTime) return;
-
-    const touch = e.touches[0];
-    const deltaX = touch.clientX - touchStartX;
-    const deltaY = touch.clientY - touchStartY;
-    const screenWidth = window.innerWidth;
-    const screenHeight = window.innerHeight;
-
-    // Determine touch type on first significant movement
-    if (!touchType) {
-      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 20) {
-        setTouchType('seek');
-      } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 20) {
-        setTouchType('volume');
-      }
-    }
-
-    // Handle seek
-    if (touchType === 'seek') {
-      const seekTime = Math.round((deltaX / screenWidth) * 30);
-      setSeekAmount(seekTime);
-      setShowSeekIndicator(true);
-      showControlsTemporarily();
-      e.preventDefault();
-    }
-    // Handle volume
-    else if (touchType === 'volume') {
-      const volumeChange = -Math.round((deltaY / screenHeight) * 100);
-      const newVolume = Math.max(0, Math.min(100, volume * 100 + volumeChange));
-      handleVolumeChange(newVolume);
-      showControlsTemporarily();
-      e.preventDefault();
-    }
-  }, [touchStartX, touchStartY, touchStartTime, touchType, volume, isTouchingControls, showControlsTemporarily]);
-
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     if (isTouchingControls) {
       setIsTouchingControls(false);
-      return;
     }
-
-    if (!touchStartX || !touchStartY || !touchStartTime) return;
-
-    // Handle seek
-    if (touchType === 'seek' && seekAmount) {
-      seek(seekAmount);
-      setShowSeekIndicator(false);
-    }
-
-    // Reset touch state
-    setTouchStartX(null);
-    setTouchStartY(null);
-    setTouchStartTime(null);
-    setTouchType(null);
-    setSeekAmount(null);
-  }, [touchStartX, touchStartY, touchStartTime, touchType, seekAmount, isTouchingControls]);
+  }, [isTouchingControls]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -1364,13 +1301,21 @@ const VideoPlayer = ({
           </>
         ) : (
           <>
-            <RotateCcw size={24} />
+            <RotateCw size={24} />
             <span>-{Math.abs(amount)}s</span>
           </>
         )}
       </div>
     </div>
   );
+
+  // Update the quality display text
+  const getQualityDisplayText = () => {
+    if (currentQuality === "-1") {
+      return currentAutoQuality ? `AUTO (${currentAutoQuality})` : "AUTO";
+    }
+    return availableQualities.find(q => q.value === currentQuality)?.label || currentQuality.toUpperCase();
+  };
 
   return (
     <div
@@ -1702,9 +1647,7 @@ const VideoPlayer = ({
                     >
                       <Settings size={20} />
                       <span className="text-sm">
-                        {currentQuality === "-1"
-                          ? "AUTO"
-                          : availableQualities.find(q => q.value === currentQuality)?.label || currentQuality.toUpperCase()}
+                        {getQualityDisplayText()}
                       </span>
                     </button>
                     {showQualityMenu && (
