@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Play,
@@ -12,6 +12,7 @@ import {
   RotateCcw,
   RotateCw,
   Headphones,
+  Subtitles,
 } from "lucide-react";
 import { useWatchHistoryStore } from "../../stores/watchHistoryStore";
 import { useAuthStore } from "../../stores/authStore";
@@ -43,6 +44,7 @@ interface VideoPlayerProps {
   currentEpisodeIndex?: number;
   onChangeEpisode?: (newIndex: number) => void;
   startTime?: number;
+  subtitleUrls?: { [key: string]: string };  // Add subtitle URLs prop
 }
 
 // Add audio track interface
@@ -50,6 +52,22 @@ interface AudioTrack {
   id: string;
   label: string;
   language: string;
+}
+
+// Add subtitle track interface
+interface SubtitleTrack {
+  id: string;
+  label: string;
+  language: string;
+  url: string;
+}
+
+interface SubtitleStyle {
+  fontSize: string;
+  fontFamily: string;
+  backgroundColor: string;
+  textColor: string;
+  backgroundOpacity: number;
 }
 
 const VideoPlayer = ({
@@ -64,6 +82,7 @@ const VideoPlayer = ({
   currentEpisodeIndex,
   onChangeEpisode,
   startTime,
+  subtitleUrls = {},  // Default to empty object
 }: VideoPlayerProps) => {
   // Navigation and State Management
   const navigate = useNavigate();
@@ -113,6 +132,17 @@ const VideoPlayer = ({
   const [isQualityChanging, setIsQualityChanging] = useState(false);
   const [qualityChangeProgress, setQualityChangeProgress] = useState(0);
   const [currentAutoQuality, setCurrentAutoQuality] = useState<string>("");
+  const [subtitleTracks, setSubtitleTracks] = useState<SubtitleTrack[]>([]);
+  const [currentSubtitleTrack, setCurrentSubtitleTrack] = useState<string>('off');
+  const [showSubtitleMenu, setShowSubtitleMenu] = useState(false);
+  const [showSubtitleSettings, setShowSubtitleSettings] = useState(false);
+  const [subtitleStyle, setSubtitleStyle] = useState<SubtitleStyle>({
+    fontSize: '100%',
+    fontFamily: 'Arial',
+    backgroundColor: '#000000',
+    textColor: '#FFFFFF',
+    backgroundOpacity: 0.5
+  });
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
@@ -140,6 +170,9 @@ const VideoPlayer = ({
   const lastUpdateTimeRef = useRef(0);
   const RAF_ID = useRef<number>();
   const seekTimeoutRef = useRef<NodeJS.Timeout>();
+
+  // Add state for orientation
+  const [isLandscape, setIsLandscape] = useState(window.innerWidth > window.innerHeight);
 
   // Add effect to manage video playing state
   useEffect(() => {
@@ -1317,6 +1350,303 @@ const VideoPlayer = ({
     return availableQualities.find(q => q.value === currentQuality)?.label || currentQuality.toUpperCase();
   };
 
+  // Initialize subtitle tracks
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Initialize subtitle tracks from subtitleUrls
+    const tracks = Object.entries(subtitleUrls).map(([lang, url]) => ({
+      id: lang,
+      label: lang === 'en' ? 'English' :
+             lang === 'es' ? 'Spanish' :
+             lang === 'fr' ? 'French' :
+             lang === 'de' ? 'German' :
+             lang === 'it' ? 'Italian' :
+             lang === 'pt' ? 'Portuguese' :
+             lang === 'ru' ? 'Russian' :
+             lang === 'ja' ? 'Japanese' :
+             lang === 'ko' ? 'Korean' :
+             lang === 'zh' ? 'Chinese' :
+             lang,
+      language: lang,
+      url: url
+    }));
+
+    setSubtitleTracks(tracks);
+
+    // Clear existing tracks first
+    while (video.firstChild) {
+      video.removeChild(video.firstChild);
+    }
+
+    // Add source back
+    if (masterUrl) {
+      const source = document.createElement('source');
+      source.src = masterUrl;
+      source.type = 'application/vnd.apple.mpegurl';
+      video.appendChild(source);
+    }
+
+    // Add subtitle tracks
+    Object.entries(subtitleUrls).forEach(([lang, url]) => {
+      const track = document.createElement('track');
+      track.kind = 'subtitles';
+      track.src = url;
+      track.srclang = lang;
+      track.label = lang === 'en' ? 'English' :
+                   lang === 'es' ? 'Spanish' :
+                   lang === 'fr' ? 'French' :
+                   lang === 'de' ? 'German' :
+                   lang === 'it' ? 'Italian' :
+                   lang === 'pt' ? 'Portuguese' :
+                   lang === 'ru' ? 'Russian' :
+                   lang === 'ja' ? 'Japanese' :
+                   lang === 'ko' ? 'Korean' :
+                   lang === 'zh' ? 'Chinese' :
+                   lang;
+      track.default = lang === 'en';
+      video.appendChild(track);
+    });
+
+    // Add single event listener for text track changes
+    const handleTextTrackChange = () => {
+      const textTracks = Array.from(video.textTracks);
+      const showingTrack = textTracks.find(track => track.mode === 'showing');
+      if (showingTrack) {
+        setCurrentSubtitleTrack(showingTrack.language);
+      } else {
+        setCurrentSubtitleTrack('off');
+      }
+    };
+
+    video.addEventListener('texttrackchange', handleTextTrackChange);
+
+    return () => {
+      video.removeEventListener('texttrackchange', handleTextTrackChange);
+    };
+  }, [subtitleUrls, masterUrl]);
+
+  // Add debug logging for subtitle tracks
+  useEffect(() => {
+    console.log('Subtitle tracks:', subtitleTracks);
+    console.log('Current subtitle track:', currentSubtitleTrack);
+  }, [subtitleTracks, currentSubtitleTrack]);
+
+  // Handle subtitle track changes
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const textTracks = Array.from(video.textTracks);
+    textTracks.forEach(track => {
+      if (currentSubtitleTrack === 'off') {
+        track.mode = 'disabled';
+      } else {
+        track.mode = track.language === currentSubtitleTrack ? 'showing' : 'disabled';
+      }
+    });
+  }, [currentSubtitleTrack]);
+
+  // Add subtitle track change handler
+  const handleSubtitleTrackChange = (trackId: string) => {
+    console.log('Subtitle track change requested:', trackId);
+    setCurrentSubtitleTrack(trackId);
+    setShowSubtitleMenu(false);
+  };
+
+  // Add effect to handle orientation changes
+  useEffect(() => {
+    const handleOrientationChange = () => {
+      setIsLandscape(window.innerWidth > window.innerHeight);
+    };
+
+    window.addEventListener('resize', handleOrientationChange);
+    return () => window.removeEventListener('resize', handleOrientationChange);
+  }, []);
+
+  // Add effect to apply subtitle styles
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const styleElement = document.createElement('style');
+    styleElement.textContent = `
+      ::cue {
+        font-size: ${subtitleStyle.fontSize};
+        font-family: ${subtitleStyle.fontFamily};
+        color: ${subtitleStyle.textColor};
+        background-color: ${subtitleStyle.backgroundColor}${Math.round(subtitleStyle.backgroundOpacity * 255).toString(16).padStart(2, '0')};
+      }
+    `;
+    document.head.appendChild(styleElement);
+
+    return () => {
+      document.head.removeChild(styleElement);
+    };
+  }, [subtitleStyle]);
+
+  // Update click outside handler
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const subtitleSettings = document.querySelector('.subtitle-settings');
+      const subtitleButton = document.querySelector('.subtitle-button');
+      const selectElements = document.querySelectorAll('select');
+      
+      // Check if click is inside any select element or its dropdown
+      const isClickInSelect = Array.from(selectElements).some(select => 
+        select.contains(event.target as Node) || 
+        select.nextElementSibling?.contains(event.target as Node)
+      );
+      
+      if (subtitleSettings && 
+          !subtitleSettings.contains(event.target as Node) && 
+          !subtitleButton?.contains(event.target as Node) &&
+          !isClickInSelect) {
+        setShowSubtitleSettings(false);
+      }
+    };
+
+    if (showSubtitleSettings) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showSubtitleSettings]);
+
+  // Add subtitle settings menu component
+  const SubtitleSettings = () => {
+    // Memoize the subtitle style updates to prevent unnecessary re-renders
+    const updateSubtitleStyle = useCallback((updates: Partial<typeof subtitleStyle>) => {
+      setSubtitleStyle(prev => ({ ...prev, ...updates }));
+    }, []);
+
+    return (
+      <div 
+        className="absolute bottom-full left-0 mb-2 bg-black/95 backdrop-blur-sm rounded-xl shadow-2xl p-4 min-w-[280px] z-[10003] subtitle-settings border border-gray-800"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-white text-sm font-semibold">Subtitle Settings</h3>
+          <button 
+            onClick={() => setShowSubtitleSettings(false)}
+            className="text-gray-400 hover:text-white transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        
+        {/* Font Size */}
+        <div className="mb-4">
+          <label className="text-gray-300 text-xs font-medium mb-2 block">Font Size</label>
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { value: '75%', label: 'S' },
+              { value: '100%', label: 'M' },
+              { value: '125%', label: 'L' },
+              { value: '150%', label: 'XL' }
+            ].map((size) => (
+              <button
+                key={size.value}
+                onClick={() => updateSubtitleStyle({ fontSize: size.value })}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  subtitleStyle.fontSize === size.value
+                    ? 'bg-cinewave-red text-white'
+                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                }`}
+              >
+                {size.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Text Color */}
+        <div className="mb-4">
+          <label className="text-gray-300 text-xs font-medium mb-2 block">Text Color</label>
+          <div className="flex gap-2">
+            {[
+              { color: '#FFFFFF', label: 'White' },
+              { color: '#FFFF00', label: 'Yellow' },
+              { color: '#00FF00', label: 'Green' },
+              { color: '#00FFFF', label: 'Cyan' },
+              { color: '#FF00FF', label: 'Magenta' }
+            ].map(({ color, label }) => (
+              <button
+                key={color}
+                onClick={() => updateSubtitleStyle({ textColor: color })}
+                className={`group relative w-8 h-8 rounded-full border-2 transition-all duration-200 ${
+                  subtitleStyle.textColor === color 
+                    ? 'border-cinewave-red scale-110' 
+                    : 'border-transparent hover:border-gray-600'
+                }`}
+                style={{ backgroundColor: color }}
+                title={label}
+              >
+                {subtitleStyle.textColor === color && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <svg className="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Background Opacity */}
+        <div className="mb-2">
+          <label className="text-gray-300 text-xs font-medium mb-2 block">Background Opacity</label>
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { value: 0, label: '0%' },
+              { value: 0.25, label: '25%' },
+              { value: 0.75, label: '75%' },
+              { value: 1, label: '100%' }
+            ].map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => updateSubtitleStyle({ backgroundOpacity: value })}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  subtitleStyle.backgroundOpacity === value
+                    ? 'bg-cinewave-red text-white'
+                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Memoize the SubtitleSettings component
+  const MemoizedSubtitleSettings = useMemo(() => {
+    return <SubtitleSettings />;
+  }, [subtitleStyle, setShowSubtitleSettings]);
+
+  // Update the subtitle style effect to be more efficient
+  useEffect(() => {
+    if (!videoRef.current) return;
+
+    const video = videoRef.current;
+    const tracks = Array.from(video.textTracks);
+
+    tracks.forEach(track => {
+      if (track.mode === 'showing') {
+        track.mode = 'hidden';
+        track.mode = 'showing';
+      }
+    });
+  }, [subtitleStyle]);
+
   return (
     <div
       ref={containerRef}
@@ -1345,29 +1675,20 @@ const VideoPlayer = ({
             console.log("Video pause event");
             setIsPlaying(false);
           }}
-          onError={(e) => {
-            console.error("Video error:", e);
-            const video = e.target as HTMLVideoElement;
-            if (video.error) {
-              console.error("Video error details:", {
-                code: video.error.code,
-                message: video.error.message,
+          onLoadedMetadata={() => {
+            console.log("Video metadata loaded");
+            // Ensure subtitle tracks are properly initialized
+            const video = videoRef.current;
+            if (video) {
+              const textTracks = Array.from(video.textTracks);
+              console.log('Available text tracks:', textTracks);
+              textTracks.forEach(track => {
+                console.log(`Track ${track.language}:`, {
+                  mode: track.mode,
+                  kind: track.kind,
+                  label: track.label
+                });
               });
-            }
-            // Try to reload with a different quality if HLS is available
-            if (availableQualities.length > 1) {
-              const currentQualityIndex = availableQualities.findIndex(
-                (q) => q.value === currentQuality
-              );
-              if (currentQualityIndex !== -1) {
-                const nextQualityIndex =
-                  (currentQualityIndex + 1) % availableQualities.length;
-                const nextQuality = availableQualities[nextQualityIndex].value;
-                console.log(
-                  `Video error - trying next quality: ${nextQuality}`
-                );
-                setCurrentQuality(nextQuality);
-              }
             }
           }}
           playsInline
@@ -1383,32 +1704,29 @@ const VideoPlayer = ({
               key={masterUrl}
               src={masterUrl}
               type="application/vnd.apple.mpegurl"
-              onError={(e) => {
-                const target = e.target as HTMLSourceElement;
-                const videoElement = target.parentElement as HTMLVideoElement;
-
-                console.error("Video source error:", {
-                  src: target.src,
-                  networkState: videoElement.networkState,
-                  errorState: videoElement.error,
-                });
-              }}
-              onLoadStart={() => console.log("Video source loading started")}
-              onLoadedData={() => {
-                console.log("Video source loaded data");
-                if (videoRef.current) {
-                  // Add a small delay to ensure the video is ready to play
-                  setTimeout(() => {
-                    videoRef.current?.play().catch((e) => {
-                      console.error("Error playing video:", e);
-                      // Only log the error, don't display it
-                    });
-                  }, 100);
-                }
-              }}
             />
           )}
-          <track kind="captions" />
+          {/* Add subtitle tracks */}
+          {Object.entries(subtitleUrls).map(([lang, url]) => (
+            <track
+              key={lang}
+              kind="subtitles"
+              src={url}
+              srcLang={lang}
+              label={lang === 'en' ? 'English' :
+                     lang === 'es' ? 'Spanish' :
+                     lang === 'fr' ? 'French' :
+                     lang === 'de' ? 'German' :
+                     lang === 'it' ? 'Italian' :
+                     lang === 'pt' ? 'Portuguese' :
+                     lang === 'ru' ? 'Russian' :
+                     lang === 'ja' ? 'Japanese' :
+                     lang === 'ko' ? 'Korean' :
+                     lang === 'zh' ? 'Chinese' :
+                     lang}
+              default={lang === 'en'}
+            />
+          ))}
           Sorry, your browser does not support embedded videos. Please try a
           different browser.
         </video>
@@ -1589,8 +1907,82 @@ const VideoPlayer = ({
 
               {/* Right side controls */}
               <div className="flex items-center gap-4">
-                {/* Audio Track Selector */}
-                {audioTracks.length > 1 && (!isMobile || !isPortrait) && (
+                {/* Subtitle Button - Always show when subtitles are available */}
+                {Object.keys(subtitleUrls).length > 0 && (
+                  <div className="relative">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowSubtitleMenu(!showSubtitleMenu);
+                        setShowSubtitleSettings(false); // Close settings when opening menu
+                      }}
+                      className="p-2 text-white hover:text-cinewave-red transition subtitle-button"
+                      title="Subtitles"
+                    >
+                      <Subtitles size={20} />
+                    </button>
+                    
+                    {/* Subtitle Menu */}
+                    {showSubtitleMenu && (
+                      <div className="absolute bottom-full left-0 mb-2 bg-black/90 rounded-lg shadow-lg p-2 min-w-[150px] z-[10002]">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSubtitleTrackChange('off');
+                            setShowSubtitleMenu(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 text-sm rounded hover:bg-white/10 ${
+                            currentSubtitleTrack === 'off' ? 'text-cinewave-red' : 'text-white'
+                          }`}
+                        >
+                          Off
+                        </button>
+                        {Object.entries(subtitleUrls).map(([lang, url]) => (
+                          <button
+                            key={lang}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSubtitleTrackChange(lang);
+                              setShowSubtitleMenu(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-sm rounded hover:bg-white/10 ${
+                              currentSubtitleTrack === lang ? 'text-cinewave-red' : 'text-white'
+                            }`}
+                          >
+                            {lang === 'en' ? 'English' :
+                             lang === 'es' ? 'Spanish' :
+                             lang === 'fr' ? 'French' :
+                             lang === 'de' ? 'German' :
+                             lang === 'it' ? 'Italian' :
+                             lang === 'pt' ? 'Portuguese' :
+                             lang === 'ru' ? 'Russian' :
+                             lang === 'ja' ? 'Japanese' :
+                             lang === 'ko' ? 'Korean' :
+                             lang === 'zh' ? 'Chinese' :
+                             lang}
+                          </button>
+                        ))}
+                        <div className="border-t border-white/10 my-2" />
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowSubtitleSettings(!showSubtitleSettings);
+                            setShowSubtitleMenu(false);
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm rounded hover:bg-white/10 text-white"
+                        >
+                          Settings
+                        </button>
+                      </div>
+                    )}
+                    
+                    {/* Subtitle Settings */}
+                    {showSubtitleSettings && MemoizedSubtitleSettings}
+                  </div>
+                )}
+
+                {/* Audio Track Selector - Only show in landscape mode */}
+                {audioTracks.length > 1 && isLandscape && (
                   <div className="relative z-[10002]">
                     <button
                       onClick={(e) => {
@@ -1631,8 +2023,8 @@ const VideoPlayer = ({
                   </div>
                 )}
 
-                {/* Quality Selector */}
-                {availableQualities.length > 1 && (!isMobile || !isPortrait) && (
+                {/* Quality Selector - Only show in landscape mode */}
+                {availableQualities.length > 1 && isLandscape && (
                   <div className="relative z-[10002]">
                     <button
                       onClick={(e) => {
@@ -1672,8 +2064,8 @@ const VideoPlayer = ({
                   </div>
                 )}
 
-                {/* Episode Navigation */}
-                {episodes &&
+                {/* Episode Navigation - Only show in landscape mode */}
+                {isLandscape && episodes &&
                   episodes.length > 0 &&
                   typeof currentEpisodeIndex === "number" &&
                   onChangeEpisode && (
@@ -1701,7 +2093,7 @@ const VideoPlayer = ({
                     </div>
                   )}
 
-                {/* Fullscreen Toggle */}
+                {/* Fullscreen Toggle - Always show */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
