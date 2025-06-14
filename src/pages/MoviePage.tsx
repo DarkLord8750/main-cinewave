@@ -205,11 +205,11 @@ const MoviePage = () => {
               {/* Poster */}
               <div className="hidden md:block w-[300px] flex-shrink-0">
                 <div className="relative group">
-                  <img
-                    src={content.posterImage}
-                    alt={content.title}
+                <img
+                  src={content.posterImage}
+                  alt={content.title}
                     className="w-full rounded-md shadow-lg transition-transform duration-300 group-hover:scale-105"
-                  />
+                />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md" />
                 </div>
               </div>
@@ -380,21 +380,21 @@ const MoviePage = () => {
                     className="group relative aspect-[2/3] rounded-lg overflow-hidden cursor-pointer"
                     onClick={() => navigate(`/movie/${movie.id}`)}
                   >
-                    <img
-                      src={movie.posterImage}
-                      alt={movie.title}
+                      <img
+                        src={movie.posterImage}
+                        alt={movie.title}
                       className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                      loading="lazy"
-                    />
+                        loading="lazy"
+                      />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                       <div className="absolute bottom-0 left-0 right-0 p-4">
                         <h3 className="text-white font-semibold text-sm md:text-base mb-1 line-clamp-2">
-                          {movie.title}
-                        </h3>
+                        {movie.title}
+                      </h3>
                         <div className="flex items-center gap-2 text-gray-300 text-xs">
-                          <span>{movie.releaseYear}</span>
-                          <span>•</span>
-                          <span className="truncate">{movie.genre.slice(0, 2).join(', ')}</span>
+                        <span>{movie.releaseYear}</span>
+                        <span>•</span>
+                        <span className="truncate">{movie.genre.slice(0, 2).join(', ')}</span>
                         </div>
                       </div>
                     </div>
