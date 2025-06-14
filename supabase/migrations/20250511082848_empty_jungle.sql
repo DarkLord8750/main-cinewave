@@ -16,14 +16,23 @@ ALTER TABLE episodes
 ADD COLUMN video_url_480p text,
 ADD COLUMN video_url_720p text,
 ADD COLUMN video_url_1080p text,
-ADD COLUMN video_url_4k text;
+ADD COLUMN video_url_4k text,
+ADD COLUMN master_url text,
+ADD COLUMN master_url_480p text,
+ADD COLUMN master_url_720p text,
+ADD COLUMN master_url_1080p text,
+ADD COLUMN subtitle_urls jsonb;
 
 -- Add check constraints for URL format validation
 ALTER TABLE episodes
 ADD CONSTRAINT episode_video_url_480p_check CHECK (video_url_480p IS NULL OR video_url_480p ~ '^https?://.*$'),
 ADD CONSTRAINT episode_video_url_720p_check CHECK (video_url_720p IS NULL OR video_url_720p ~ '^https?://.*$'),
 ADD CONSTRAINT episode_video_url_1080p_check CHECK (video_url_1080p IS NULL OR video_url_1080p ~ '^https?://.*$'),
-ADD CONSTRAINT episode_video_url_4k_check CHECK (video_url_4k IS NULL OR video_url_4k ~ '^https?://.*$');
+ADD CONSTRAINT episode_video_url_4k_check CHECK (video_url_4k IS NULL OR video_url_4k ~ '^https?://.*$'),
+ADD CONSTRAINT episode_master_url_check CHECK (master_url IS NULL OR master_url ~ '^https?://.*$'),
+ADD CONSTRAINT episode_master_url_480p_check CHECK (master_url_480p IS NULL OR master_url_480p ~ '^https?://.*$'),
+ADD CONSTRAINT episode_master_url_720p_check CHECK (master_url_720p IS NULL OR master_url_720p ~ '^https?://.*$'),
+ADD CONSTRAINT episode_master_url_1080p_check CHECK (master_url_1080p IS NULL OR master_url_1080p ~ '^https?://.*$');
 
 -- Drop existing video_url column since we now have quality-specific URLs
 ALTER TABLE episodes
