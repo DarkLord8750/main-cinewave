@@ -42,6 +42,7 @@ interface Episode {
   master_url_480p?: string;
   master_url_720p?: string;
   master_url_1080p?: string;
+  subtitle_urls?: { [key: string]: string };
 }
 
 const SeriesPage = () => {
@@ -309,6 +310,7 @@ const SeriesPage = () => {
               title: currentEpisode.title,
             }}
             startTime={startTime}
+            subtitleUrls={currentEpisode.subtitle_urls}
           />
         </div>
       ) : (
