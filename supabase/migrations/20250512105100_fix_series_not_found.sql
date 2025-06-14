@@ -167,6 +167,78 @@ BEGIN
 END;
 $$;
 
+-- Create function to create episode with all necessary fields
+CREATE OR REPLACE FUNCTION public.create_episode(
+  p_season_id uuid,
+  p_episode_number integer,
+  p_title text,
+  p_description text DEFAULT NULL,
+  p_duration text DEFAULT NULL,
+  p_thumbnail text DEFAULT NULL,
+  p_video_url_480p text DEFAULT NULL,
+  p_video_url_720p text DEFAULT NULL,
+  p_video_url_1080p text DEFAULT NULL,
+  p_video_url_4k text DEFAULT NULL,
+  p_master_url text DEFAULT NULL,
+  p_master_url_480p text DEFAULT NULL,
+  p_master_url_720p text DEFAULT NULL,
+  p_master_url_1080p text DEFAULT NULL,
+  p_subtitle_urls jsonb DEFAULT NULL
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_episode_id uuid;
+BEGIN
+  -- Validate season exists
+  IF NOT EXISTS (SELECT 1 FROM seasons WHERE id = p_season_id) THEN
+    RAISE EXCEPTION 'Season not found with ID %', p_season_id;
+  END IF;
+
+  -- Create episode
+  INSERT INTO episodes (
+    season_id,
+    episode_number,
+    title,
+    description,
+    duration,
+    thumbnail,
+    video_url_480p,
+    video_url_720p,
+    video_url_1080p,
+    video_url_4k,
+    master_url,
+    master_url_480p,
+    master_url_720p,
+    master_url_1080p,
+    subtitle_urls
+  )
+  VALUES (
+    p_season_id,
+    p_episode_number,
+    p_title,
+    p_description,
+    p_duration,
+    p_thumbnail,
+    p_video_url_480p,
+    p_video_url_720p,
+    p_video_url_1080p,
+    p_video_url_4k,
+    p_master_url,
+    p_master_url_480p,
+    p_master_url_720p,
+    p_master_url_1080p,
+    p_subtitle_urls
+  )
+  RETURNING id INTO v_episode_id;
+
+  RETURN v_episode_id;
+END;
+$$;
+
 -- Grant execute permissions
 GRANT EXECUTE ON FUNCTION public.validate_content_type(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.create_series_and_season(uuid, text, integer, text) TO authenticated;
