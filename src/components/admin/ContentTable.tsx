@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Edit, Trash, Eye, ArrowUpDown } from 'lucide-react';
+import { Search, Edit, Trash, Pencil, GalleryVerticalEnd, ArrowUpDown } from 'lucide-react';
 import { Content } from '../../stores/contentStore';
 
 interface ContentTableProps {
@@ -180,19 +180,21 @@ const ContentTable = ({ contents, onEdit, onDelete, onView, isLoading = false }:
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex items-center justify-end space-x-2">
-                      <button
-                        onClick={() => onView(content.id)}
-                        className="text-gray-500 hover:text-gray-900"
-                        aria-label="View"
-                      >
-                        <Eye size={18} />
-                      </button>
+                      {content.type === 'series' && (
+                        <button
+                          onClick={() => onView(content.id)}
+                          className="text-gray-500 hover:text-gray-900"
+                          aria-label="View"
+                        >
+                          <Pencil size={18} />
+                        </button>
+                      )}
                       <button
                         onClick={() => onEdit(content)}
                         className="text-indigo-600 hover:text-indigo-900"
                         aria-label="Edit"
                       >
-                        <Edit size={18} />
+                        {content.type === 'series' ? <GalleryVerticalEnd size={18} /> : <Pencil size={18} />}
                       </button>
                       <button
                         onClick={() => onDelete(content.id)}
