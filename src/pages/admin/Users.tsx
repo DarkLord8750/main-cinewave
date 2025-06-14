@@ -9,7 +9,11 @@ const Users = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editForm, setEditForm] = useState({
+  const [editForm, setEditForm] = useState<{
+    is_admin: boolean;
+    status: 'active' | 'inactive' | 'suspended';
+    notes: string;
+  }>({
     is_admin: false,
     status: 'active',
     notes: ''
@@ -24,7 +28,7 @@ const Users = () => {
     if (selectedUser) {
       setEditForm({
         is_admin: selectedUser.is_admin,
-        status: selectedUser.last_active ? 'active' : 'inactive',
+        status: selectedUser.status || 'active',
         notes: selectedUser.notes || ''
       });
     }
@@ -157,11 +161,13 @@ const Users = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      user.last_active
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-yellow-100 text-yellow-800'
+                      user.status === 'active' ? 'bg-green-100 text-green-800' : 
+                      user.status === 'suspended' ? 'bg-red-100 text-red-800' :
+                      'bg-yellow-100 text-yellow-800'
                     }`}>
-                      {user.last_active ? 'Active' : 'Inactive'}
+                      {user.status === 'active' ? 'Active' : 
+                       user.status === 'suspended' ? 'Suspended' :
+                       'Inactive'}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -185,10 +191,7 @@ const Users = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {user.last_active
-                      ? new Date(user.last_active).toLocaleDateString()
-                      : 'Never'
-                    }
+                    {user.last_active ? new Date(user.last_active as string).toLocaleDateString() : 'Never'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {new Date(user.created_at).toLocaleDateString()}
@@ -348,7 +351,7 @@ const Users = () => {
                 <label className="block text-sm font-medium text-gray-700">Status</label>
                 <select
                   value={editForm.status}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, status: e.target.value }))}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, status: e.target.value as 'active' | 'inactive' | 'suspended' }))}
                   className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-[#E50914] focus:border-[#E50914] sm:text-sm rounded-md text-gray-900"
                 >
                   <option value="active">Active</option>
