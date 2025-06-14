@@ -8,6 +8,7 @@ import { useContentStore } from '../stores/contentStore';
 import { useAuthStore } from '../stores/authStore';
 import { Play, Plus, Check, ChevronDown, X, Download } from 'lucide-react';
 import { useWatchHistoryStore } from '../stores/watchHistoryStore';
+import { Link } from 'react-router-dom';
 
 interface Series {
   id: string;
@@ -59,9 +60,12 @@ const SeriesPage = () => {
   const [similarSeries, setSimilarSeries] = useState<Series[]>([]);
   const [showSeasonPicker, setShowSeasonPicker] = useState(false);
   const [showDownloadMenu, setShowDownloadMenu] = useState<string | null>(null);
+  const [showSeasonDropdown, setShowSeasonDropdown] = useState(false);
+  const [inMyList, setInMyList] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // My List logic
-  const { isInMyList, addToMyList, removeFromMyList } = useContentStore();
+  const { addToMyList, removeFromMyList } = useContentStore();
   const { currentProfile } = useAuthStore();
   const { history } = useWatchHistoryStore();
   const { getContentsByGenre } = useContentStore();
@@ -80,6 +84,13 @@ const SeriesPage = () => {
         .eq('id', id)
         .maybeSingle();
       console.log('seriesData', seriesData, 'seriesError', seriesError);
+
+      // Check if content is actually a series
+      if (seriesData && seriesData.type !== 'series') {
+        navigate(`/movie/${id}`);
+        return;
+      }
+
       setSeries(seriesData
         ? {
             id: seriesData.id,
@@ -178,9 +189,20 @@ const SeriesPage = () => {
     };
   }, [showSeasonPicker]);
 
-  if (isLoading || !series) return <LoadingSpinner />;
+  // Add click outside handler for season dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.season-dropdown')) {
+        setShowSeasonDropdown(false);
+      }
+    };
 
-  const inMyList = isInMyList(series.id);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  if (isLoading || !series) return <LoadingSpinner />;
 
   const handlePlay = (episode: Episode) => {
     setCurrentEpisode(episode);
@@ -189,17 +211,17 @@ const SeriesPage = () => {
   };
 
   const handleChangeEpisode = (newIndex: number) => {
-    if (episodes[newIndex]) {
+    if (newIndex >= 0 && newIndex < episodes.length) {
       setCurrentEpisode(episodes[newIndex]);
     }
   };
 
   const currentEpisodeIndex = currentEpisode ? episodes.findIndex(e => e.id === currentEpisode.id) : 0;
+  const startTime = currentEpisode ? (history.find(h => h.contentId === currentEpisode.id)?.watchTime || 0) : 0;
 
   const handleClose = () => {
-    setIsFullscreen(false);
     setShowVideo(false);
-    setCurrentEpisode(null);
+    setIsFullscreen(false);
   };
 
   const handleMyList = () => {
@@ -211,11 +233,12 @@ const SeriesPage = () => {
   };
 
   const handleSeasonClick = () => {
-    setShowSeasonPicker(true);
+    setShowSeasonDropdown(!showSeasonDropdown);
   };
 
   const handleSeasonSelect = (season: Season) => {
     setSelectedSeason(season);
+    setShowSeasonDropdown(false);
     setShowSeasonPicker(false);
   };
 
@@ -224,7 +247,6 @@ const SeriesPage = () => {
         h => h.contentId === currentEpisode.id && h.profileId === currentProfile.id
       )
     : null;
-  const startTime = watchProgress?.watchTime || 0;
 
   const getVideoUrls = (episode: Episode) => {
     return {
@@ -268,31 +290,6 @@ const SeriesPage = () => {
     <div className="min-h-screen bg-netflix-dark">
       {isFullscreen && showVideo && currentEpisode ? (
         <div className="fixed inset-0 z-50 bg-black">
-          {/* Previous VideoPlayer implementation 
-          <VideoPlayer
-            title={series.title + ' - ' + currentEpisode.title}
-            description={currentEpisode.description}
-            masterUrl={currentEpisode.master_url || ''}
-            masterUrl480p={currentEpisode.master_url_480p || ''}
-            masterUrl720p={currentEpisode.master_url_720p || ''}
-            masterUrl1080p={currentEpisode.master_url_1080p || ''}
-            contentId={series.id}
-            onClose={handleClose}
-            isFullScreen={true}
-            autoPlay={true}
-            episodes={episodes}
-            currentEpisodeIndex={currentEpisodeIndex}
-            onChangeEpisode={handleChangeEpisode}
-            episodeInfo={{
-              season: selectedSeason?.season_number || 1,
-              episode: currentEpisode.episode_number,
-              title: currentEpisode.title,
-            }}
-            startTime={startTime}
-          />
-          */}
-          
-          {/* New VideoPlayer implementation */}
           <VideoPlayer
             title={series.title + ' - ' + currentEpisode.title}
             description={currentEpisode.description}
@@ -314,7 +311,7 @@ const SeriesPage = () => {
           />
         </div>
       ) : (
-        <div className="min-h-screen bg-netflix-dark">
+        <>
           <div className="relative w-full h-[60vh] sm:h-[56.25vw] sm:max-h-[80vh]">
             <img 
               src={series.backdropImage} 
@@ -405,215 +402,231 @@ const SeriesPage = () => {
               </div>
             </div>
 
-            {/* Season Selector and Episodes */}
+            {/* Episodes Section */}
             <div className="mt-8 md:mt-12">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-6">
-                <label className="font-semibold text-white text-lg">Season:</label>
-                {/* Mobile Season Button */}
-                <button
-                  onClick={handleSeasonClick}
-                  className="sm:hidden w-full bg-[#1f1f1f] text-white px-4 py-3 rounded flex items-center justify-between"
-                >
-                  <span>Season {selectedSeason?.season_number}</span>
-                  <ChevronDown size={20} />
-                </button>
-                {/* Desktop Season Selector */}
-                <div className="hidden sm:block relative w-44">
-                  <select
-                    className="w-full appearance-none bg-[#1f1f1f] text-white px-4 py-2.5 rounded border border-gray-600 hover:bg-[#2f2f2f] transition-colors focus:border-gray-400 focus:outline-none cursor-pointer pr-10"
-                    value={selectedSeason?.id || ''}
-                    onChange={e => {
-                      const season = seasons.find(s => s.id === e.target.value);
-                      setSelectedSeason(season || null);
-                    }}
-                  >
-                    {seasons.map(season => (
-                      <option 
-                        key={season.id} 
-                        value={season.id}
-                      >
-                        Season {season.season_number}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                    <ChevronDown size={20} className="text-gray-400" />
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-4">
+                  <h2 className="text-2xl md:text-3xl font-bold text-white">
+                    Episodes
+                  </h2>
+                  <div className="relative season-dropdown">
+                    <button
+                      onClick={handleSeasonClick}
+                      className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all duration-200"
+                    >
+                      <span>Season {selectedSeason?.season_number}</span>
+                      <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showSeasonDropdown ? 'rotate-180' : ''}`} />
+                    </button>
+                    {showSeasonDropdown && (
+                      <div className="absolute top-full left-0 mt-2 w-48 bg-[#1f1f1f] rounded-lg shadow-xl z-10 border border-white/10 backdrop-blur-md">
+                        <div className="py-1">
+                          {seasons.map(season => (
+                            <button
+                              key={season.id}
+                              onClick={() => handleSeasonSelect(season)}
+                              className="w-full px-4 py-2.5 text-left text-white hover:bg-white/10 transition-all duration-200 flex items-center justify-between"
+                            >
+                              <span className="font-medium">Season {season.season_number}</span>
+                              {selectedSeason?.id === season.id && (
+                                <Check className="w-4 h-4 text-netflix-red" />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Mobile Season Picker Bottom Sheet */}
-              {showSeasonPicker && (
-                <div className="fixed inset-0 z-50 sm:hidden">
-                  <div 
-                    className="absolute inset-0 bg-black/60"
-                    onClick={() => setShowSeasonPicker(false)}
-                  />
-                  <div className="absolute bottom-0 left-0 right-0 bg-[#1f1f1f] rounded-t-xl max-h-[80vh] overflow-y-auto">
-                    <div className="sticky top-0 flex items-center justify-between p-4 bg-[#1f1f1f] border-b border-gray-800">
-                      <h3 className="text-lg font-medium text-white">Select Season</h3>
-                      <button 
-                        onClick={() => setShowSeasonPicker(false)}
-                        className="p-1 text-gray-400 hover:text-white"
-                      >
-                        <X size={24} />
-                      </button>
-                    </div>
-                    <div className="py-2">
-                      {seasons.map(season => (
-                        <button
-                          key={season.id}
-                          onClick={() => handleSeasonSelect(season)}
-                          className={`w-full px-6 py-4 text-left text-white hover:bg-[#2f2f2f] transition-colors flex items-center justify-between ${
-                            selectedSeason?.id === season.id ? 'bg-[#2f2f2f]' : ''
-                          }`}
-                        >
-                          <span className="text-base">Season {season.season_number}</span>
-                          {selectedSeason?.id === season.id && (
-                            <Check size={20} className="text-netflix-red" />
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Episode List */}
-              <div className="px-4 md:px-8 py-8">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl md:text-2xl font-bold text-white">
-                    Episodes
-                  </h2>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={handleSeasonClick}
-                      className="flex items-center space-x-2 px-4 py-2 bg-netflix-gray hover:bg-netflix-gray-hover rounded text-white"
-                    >
-                      <span>Season {selectedSeason?.season_number}</span>
-                      <ChevronDown className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  {episodes.map((episode) => (
-                    <div
-                      key={episode.id}
-                      className="flex flex-col md:flex-row items-start md:items-center space-y-4 md:space-y-0 md:space-x-4 p-4 bg-netflix-gray rounded-lg"
-                    >
-                      <div className="relative w-full md:w-48 h-27 md:h-32 flex-shrink-0">
+              <div className="space-y-6">
+                {episodes.map((episode) => (
+                  <div
+                    key={episode.id}
+                    className="group flex items-center justify-between gap-4 p-4 bg-white/5 rounded-xl hover:bg-white/10 transition-all duration-200"
+                  >
+                    <div className="flex items-start gap-4 flex-grow">
+                      <div className="relative w-24 h-16 md:w-40 md:h-24 flex-shrink-0 rounded-lg overflow-hidden group cursor-pointer">
                         <img
                           src={series.posterImage}
                           alt={episode.title}
-                          className="w-full h-full object-cover rounded"
+                          className="w-full h-full object-cover transition-all duration-300 group-hover:scale-110 group-hover:brightness-75"
                         />
-                        <div className="absolute inset-0 flex items-center justify-center gap-4 bg-black bg-opacity-50 hover:bg-opacity-40 transition-opacity">
-                          <button
-                            onClick={() => handlePlay(episode)}
-                            className="w-12 h-12 rounded-full bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center"
-                          >
-                            <Play className="w-6 h-6 text-white" />
-                          </button>
-                          <div className="relative">
-                            <button
-                              onClick={() => setShowDownloadMenu(showDownloadMenu === episode.id ? null : episode.id)}
-                              className="w-12 h-12 rounded-full bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center"
-                            >
-                              <Download className="w-6 h-6 text-white" />
-                            </button>
-                            {showDownloadMenu === episode.id && (
-                              <div className="absolute right-0 mt-2 w-48 bg-netflix-gray rounded-lg shadow-lg z-10">
-                                <div className="py-1">
-                                  {episode.video_url_1080p && (
-                                    <button
-                                      onClick={() => handleDownload(episode, '1080p')}
-                                      className="w-full px-4 py-2 text-left text-white hover:bg-netflix-gray-hover"
-                                    >
-                                      1080p
-                                    </button>
-                                  )}
-                                  {episode.video_url_720p && (
-                                    <button
-                                      onClick={() => handleDownload(episode, '720p')}
-                                      className="w-full px-4 py-2 text-left text-white hover:bg-netflix-gray-hover"
-                                    >
-                                      720p
-                                    </button>
-                                  )}
-                                  {episode.video_url_480p && (
-                                    <button
-                                      onClick={() => handleDownload(episode, '480p')}
-                                      className="w-full px-4 py-2 text-left text-white hover:bg-netflix-gray-hover"
-                                    >
-                                      480p
-                                    </button>
-                                  )}
-                                  {episode.video_url_4k && (
-                                    <button
-                                      onClick={() => handleDownload(episode, '4K')}
-                                      className="w-full px-4 py-2 text-left text-white hover:bg-netflix-gray-hover"
-                                    >
-                                      4K
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300" />
+                      </div>
+                      <div className="flex-grow">
+                        <div className="space-y-1">
+                          <h3 className="text-base font-semibold text-white">
+                            {episode.episode_number}. {episode.title}
+                          </h3>
+                          <p className="text-gray-400 text-sm line-clamp-2">
+                            {episode.description}
+                          </p>
+                          <div className="flex items-center gap-4 text-sm text-gray-400">
+                            <span>HD</span>
                           </div>
                         </div>
                       </div>
-                      <div className="flex-grow">
-                        <div>
-                          <h3 className="text-lg font-semibold text-white">
-                            {episode.episode_number}. {episode.title}
-                          </h3>
-                          <p className="text-gray-400 mt-2">
-                            {episode.description}
-                          </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => handlePlay(episode)}
+                        className="group relative flex items-center justify-center w-10 h-10 bg-netflix-red hover:bg-red-700 rounded-lg text-white transition-all duration-300 shadow-lg hover:shadow-red-500/30 overflow-hidden"
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-r from-red-600 to-red-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                        <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-red-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                        <div className="relative">
+                          <Play className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
                         </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Similar Series Section */}
-          {similarSeries.length > 0 && (
-            <section className="mt-8 sm:mt-12 px-4 sm:px-8 md:px-12 pb-20">
-              <h2 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-6">More Like This</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
-                {similarSeries.map((item) => (
-                  <div 
-                    key={item.id} 
-                    className="netflix-card cursor-pointer"
-                    onClick={() => navigate(`/series/${item.id}`)}
-                  >
-                    <div className="aspect-[2/3] rounded-md overflow-hidden">
-                      <img
-                        src={item.posterImage}
-                        alt={item.title}
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                      />
-                    </div>
-                    <div className="mt-2">
-                      <h3 className="text-white text-sm font-medium truncate">
-                        {item.title}
-                      </h3>
-                      <div className="flex items-center gap-2 text-xs text-netflix-gray mt-1">
-                        <span>{item.releaseYear}</span>
-                        <span>•</span>
-                        <span className="truncate">{item.genre.slice(0, 2).join(', ')}</span>
+                      </button>
+                      <div className="relative">
+                        <button
+                          onClick={() => setShowDownloadMenu(showDownloadMenu === episode.id ? null : episode.id)}
+                          className="group relative flex items-center justify-center w-10 h-10 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all duration-300 border border-white/10 hover:border-white/20 overflow-hidden"
+                        >
+                          <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                          <div className="relative">
+                            <Download className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
+                          </div>
+                        </button>
+                        {showDownloadMenu === episode.id && (
+                          <div className="absolute right-0 mt-2 w-56 bg-[#1f1f1f]/95 rounded-lg shadow-xl z-10 border border-white/10 backdrop-blur-md">
+                            <div className="py-1.5">
+                              {episode.video_url_1080p && (
+                                <button
+                                  onClick={() => handleDownload(episode, '1080p')}
+                                  className="group w-full px-4 py-2.5 text-left text-white hover:bg-white/10 transition-all duration-200 flex items-center justify-between"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">1080p</span>
+                                    <span className="text-xs text-gray-400 group-hover:text-white">Full HD</span>
+                                  </div>
+                                  <span className="text-xs text-gray-500 group-hover:text-white">Best Quality</span>
+                                </button>
+                              )}
+                              {episode.video_url_720p && (
+                                <button
+                                  onClick={() => handleDownload(episode, '720p')}
+                                  className="group w-full px-4 py-2.5 text-left text-white hover:bg-white/10 transition-all duration-200 flex items-center justify-between"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">720p</span>
+                                    <span className="text-xs text-gray-400 group-hover:text-white">HD</span>
+                                  </div>
+                                  <span className="text-xs text-gray-500 group-hover:text-white">Good Quality</span>
+                                </button>
+                              )}
+                              {episode.video_url_480p && (
+                                <button
+                                  onClick={() => handleDownload(episode, '480p')}
+                                  className="group w-full px-4 py-2.5 text-left text-white hover:bg-white/10 transition-all duration-200 flex items-center justify-between"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">480p</span>
+                                    <span className="text-xs text-gray-400 group-hover:text-white">SD</span>
+                                  </div>
+                                  <span className="text-xs text-gray-500 group-hover:text-white">Standard</span>
+                                </button>
+                              )}
+                              {episode.video_url_4k && (
+                                <button
+                                  onClick={() => handleDownload(episode, '4K')}
+                                  className="group w-full px-4 py-2.5 text-left text-white hover:bg-white/10 transition-all duration-200 flex items-center justify-between"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">4K</span>
+                                    <span className="text-xs text-gray-400 group-hover:text-white">Ultra HD</span>
+                                  </div>
+                                  <span className="text-xs text-gray-500 group-hover:text-white">Premium</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-            </section>
+            </div>
+
+            {/* Similar Series Section */}
+            {similarSeries.length > 0 && (
+              <section className="mt-12 md:mt-16">
+                <h2 className="text-2xl md:text-3xl font-bold text-white mb-6">
+                  More Like This
+                </h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
+                  {similarSeries.map((series) => (
+                    <div
+                      key={series.id}
+                      className="group relative aspect-[2/3] rounded-lg overflow-hidden"
+                    >
+                      <img
+                        src={series.posterImage}
+                        alt={series.title}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <div className="absolute bottom-0 left-0 right-0 p-4">
+                          <h3 className="text-white font-semibold text-sm md:text-base mb-1 line-clamp-2">
+                            {series.title}
+                          </h3>
+                          <div className="flex items-center gap-2 text-gray-300 text-xs">
+                            <span>{series.releaseYear}</span>
+                            <span>•</span>
+                            <span>{series.maturityRating}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <Link
+                        to={`/series/${series.id}`}
+                        className="absolute inset-0 z-10"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+
+          {/* Mobile Season Picker Bottom Sheet */}
+          {showSeasonPicker && (
+            <div className="fixed inset-0 z-50 sm:hidden">
+              <div 
+                className="absolute inset-0 bg-black/60"
+                onClick={() => setShowSeasonPicker(false)}
+              />
+              <div className="absolute bottom-0 left-0 right-0 bg-[#1f1f1f] rounded-t-xl max-h-[80vh] overflow-y-auto">
+                <div className="sticky top-0 flex items-center justify-between p-4 bg-[#1f1f1f] border-b border-gray-800">
+                  <h3 className="text-lg font-medium text-white">Select Season</h3>
+                  <button 
+                    onClick={() => setShowSeasonPicker(false)}
+                    className="p-1 text-gray-400 hover:text-white"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+                <div className="py-2">
+                  {seasons.map(season => (
+                    <button
+                      key={season.id}
+                      onClick={() => handleSeasonSelect(season)}
+                      className={`w-full px-6 py-4 text-left text-white hover:bg-[#2f2f2f] transition-colors flex items-center justify-between ${
+                        selectedSeason?.id === season.id ? 'bg-[#2f2f2f]' : ''
+                      }`}
+                    >
+                      <span className="text-base">Season {season.season_number}</span>
+                      {selectedSeason?.id === season.id && (
+                        <Check size={20} className="text-netflix-red" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );
