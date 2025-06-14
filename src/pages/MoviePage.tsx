@@ -40,6 +40,11 @@ const MoviePage = () => {
         if (id) {
           const movieContent = getContentById(id);
           if (movieContent) {
+            // Check if content is actually a movie
+            if (movieContent.type !== 'movie') {
+              navigate(`/series/${id}`);
+              return;
+            }
             setContent(movieContent);
             
             // Get similar movies based on genre
@@ -48,6 +53,7 @@ const MoviePage = () => {
               .flat()
               .filter((c, i, arr) => 
                 c.id !== movieContent.id && 
+                c.type === 'movie' &&
                 arr.findIndex(item => item.id === c.id) === i
               )
               .slice(0, 12);
