@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { Plus, Edit, Trash, ChevronDown, ChevronUp, Loader2, Trash2 } from 'lucide-react';
 import { useContentStore, Season, Episode } from '../../stores/contentStore';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { useToast } from '../ui/use-toast';
+import { SubtitleManager } from './SubtitleManager';
 
 interface SeriesManagerProps {
   contentId: string;
@@ -169,9 +170,9 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
     
     const form = e.currentTarget as HTMLFormElement;
     const formData = {
-      episodeNumber: (form.elements.namedItem('episodeNumber') as HTMLInputElement).value,
-      title: (form.elements.namedItem('title') as HTMLInputElement).value,
-      duration: (form.elements.namedItem('duration') as HTMLInputElement).value,
+      episodeNumber: (form.elements.namedItem('episodeNumber') as HTMLInputElement)?.value,
+      title: (form.elements.namedItem('title') as HTMLInputElement)?.value,
+      duration: (form.elements.namedItem('duration') as HTMLInputElement)?.value,
       master_url: (form.elements.namedItem('master_url') as HTMLInputElement)?.value,
       master_url_480p: (form.elements.namedItem('master_url_480p') as HTMLInputElement)?.value,
       master_url_720p: (form.elements.namedItem('master_url_720p') as HTMLInputElement)?.value,
@@ -180,6 +181,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
       videoUrl720p: (form.elements.namedItem('videoUrl720p') as HTMLInputElement)?.value,
       videoUrl1080p: (form.elements.namedItem('videoUrl1080p') as HTMLInputElement)?.value,
       videoUrl4k: (form.elements.namedItem('videoUrl4k') as HTMLInputElement)?.value,
+      subtitle_urls: JSON.parse((form.elements.namedItem('subtitle_urls') as HTMLTextAreaElement)?.value || '{}')
     };
     
     if (!formData.title || !formData.title.trim()) {
@@ -202,7 +204,8 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
         videoUrl480p: formData.videoUrl480p || undefined,
         videoUrl720p: formData.videoUrl720p || undefined,
         videoUrl1080p: formData.videoUrl1080p || undefined,
-        videoUrl4k: formData.videoUrl4k || undefined
+        videoUrl4k: formData.videoUrl4k || undefined,
+        subtitle_urls: formData.subtitle_urls
       });
       // Update local state immediately
       const updatedSeasons = seasons.map(season => 
@@ -260,7 +263,10 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
   // --- Inline episode edit handlers ---
   const startEditEpisode = (episode: Episode) => {
     setEditingEpisodeId(episode.id);
-    setEditEpisodeData({ ...episode });
+    setEditEpisodeData({
+      ...episode,
+      subtitle_urls: episode.subtitle_urls || {}
+    });
   };
   const cancelEditEpisode = () => {
     setEditingEpisodeId(null);
@@ -276,6 +282,11 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
         master_url_480p: editEpisodeData.master_url_480p || undefined,
         master_url_720p: editEpisodeData.master_url_720p || undefined,
         master_url_1080p: editEpisodeData.master_url_1080p || undefined,
+        videoUrl480p: editEpisodeData.videoUrl480p || undefined,
+        videoUrl720p: editEpisodeData.videoUrl720p || undefined,
+        videoUrl1080p: editEpisodeData.videoUrl1080p || undefined,
+        videoUrl4k: editEpisodeData.videoUrl4k || undefined,
+        subtitle_urls: editEpisodeData.subtitle_urls || undefined
       });
       // Update local state immediately
       const updatedSeasons = seasons.map(season => ({
@@ -521,6 +532,19 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                                       <input type="url" placeholder="720p" value={editEpisodeData?.videoUrl720p ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, videoUrl720p: e.target.value } : d)} className="w-24 border rounded p-2" />
                                       <input type="url" placeholder="1080p" value={editEpisodeData?.videoUrl1080p ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, videoUrl1080p: e.target.value } : d)} className="w-24 border rounded p-2" />
                                       <input type="url" placeholder="4K" value={editEpisodeData?.videoUrl4k ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, videoUrl4k: e.target.value } : d)} className="w-24 border rounded p-2" />
+                                      <div className="mt-4">
+                                        <label className="block text-sm font-medium text-black mb-2">Subtitles</label>
+                                        <SubtitleManager
+                                          value={editEpisodeData?.subtitle_urls || {}}
+                                          onChange={(value) => {
+                                            setEditEpisodeData(d => d ? {
+                                              ...d,
+                                              subtitle_urls: value
+                                            } : d);
+                                          }}
+                                          disabled={isLoading}
+                                        />
+                                      </div>
                                     </div>
                                   </td>
                                   <td className="py-2">
@@ -647,6 +671,30 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                       )}
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* Subtitle URLs */}
+              <div className="space-y-4">
+                <h5 className="font-medium">Subtitles</h5>
+                <div className="space-y-4">
+                  <SubtitleManager
+                    value={{}}
+                    onChange={(value) => {
+                      const form = document.querySelector('form');
+                      const subtitleUrlsInput = form?.elements.namedItem('subtitle_urls') as HTMLTextAreaElement;
+                      if (subtitleUrlsInput) {
+                        subtitleUrlsInput.value = JSON.stringify(value, null, 2);
+                      }
+                    }}
+                    disabled={isLoading}
+                  />
+                  <textarea
+                    id="subtitle_urls"
+                    name="subtitle_urls"
+                    className="hidden"
+                    defaultValue="{}"
+                  />
                 </div>
               </div>
               
