@@ -282,26 +282,22 @@ const ContentManagement = () => {
 
     try {
       setIsLoading(true);
-      if (modalMode === 'add-movie' || modalMode === 'add-series') {
-        const newContent = await addContent(contentData);
-        if (modalMode === 'add-series' && newContent) {
-          setSelectedContent(newContent);
-          setShowSeriesManager(true);
-          return; // Don't close the modal yet
-        }
-      } else if (selectedContent) {
+      if (selectedContent) {
+        // Update existing content (both for view and edit modes)
         await updateContent(selectedContent.id, contentData);
+      } else if (modalMode.startsWith('add')) {
+        // Add new content
+        await addContent(contentData);
       }
-      
-      // Close modal only if not adding a series or if updating
       setIsModalOpen(false);
       setSelectedContent(null);
       setSelectedGenres([]);
-      setShowSeriesManager(false);
+      setValidationErrors({});
     } catch (error) {
-      console.error('Failed to save content:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to save content';
-      setValidationErrors({ submit: errorMessage });
+      console.error('Error saving content:', error);
+      setValidationErrors({
+        submit: error instanceof Error ? error.message : 'Failed to save content'
+      });
     } finally {
       setIsLoading(false);
     }
@@ -394,39 +390,42 @@ const ContentManagement = () => {
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleSave} className="p-6 space-y-6">
-                {/* Basic Information */}
-                <div className="grid grid-cols-2 gap-4">
+              <form onSubmit={handleSave} className="p-6 space-y-8">
+                {/* Basic Information Section */}
+                <div className="bg-gray-50 p-6 rounded-lg space-y-6">
+                  <h3 className="text-xl font-semibold text-gray-900 border-b pb-3">Basic Information</h3>
+                  <div className="grid grid-cols-2 gap-6">
+                    {renderInput(
+                      { label: "Title", name: "title", type: "text", required: true },
+                      selectedContent,
+                      validationErrors
+                    )}
+                    {renderInput(
+                      { label: "Release Year", name: "releaseYear", type: "number", required: true, min: 1900, max: new Date().getFullYear() + 5 },
+                      selectedContent,
+                      validationErrors
+                    )}
+                  </div>
+
                   {renderInput(
-                    { label: "Title", name: "title", type: "text", required: true },
+                    { label: "Description", name: "description", type: "textarea", required: true },
                     selectedContent,
                     validationErrors
                   )}
-                  {renderInput(
-                    { label: "Release Year", name: "releaseYear", type: "number", required: true, min: 1900, max: new Date().getFullYear() + 5 },
-                    selectedContent,
-                    validationErrors
-                  )}
+
+                  <div className="grid grid-cols-2 gap-6">
+                    {renderInput(
+                      { label: "Maturity Rating", name: "maturityRating", type: "select", options: ratings, required: true },
+                      selectedContent,
+                      validationErrors
+                    )}
+                  </div>
                 </div>
 
-                {renderInput(
-                  { label: "Description", name: "description", type: "textarea", required: true },
-                  selectedContent,
-                  validationErrors
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
-                  {renderInput(
-                    { label: "Maturity Rating", name: "maturityRating", type: "select", options: ratings, required: true },
-                    selectedContent,
-                    validationErrors
-                  )}
-                </div>
-
-                {/* Media URLs */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium text-gray-900">Media</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                {/* Media Section */}
+                <div className="bg-gray-50 p-6 rounded-lg space-y-6">
+                  <h3 className="text-xl font-semibold text-gray-900 border-b pb-3">Media</h3>
+                  <div className="grid grid-cols-2 gap-6">
                     {renderInput(
                       { label: "Poster Image URL", name: "posterImage", type: "url", required: true },
                       selectedContent,
@@ -445,35 +444,63 @@ const ContentManagement = () => {
                   )}
                 </div>
 
-                {/* Video Quality URLs */}
-                  <div className="space-y-4">
-                  <h5 className="font-medium">Video Quality URLs</h5>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Video Quality URLs Section */}
+                <div className="bg-gray-50 p-6 rounded-lg space-y-6">
+                  <h3 className="text-xl font-semibold text-gray-900 border-b pb-3">Video Quality URLs</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {videoQualities.map(quality => (
                       <div key={quality.name} className="space-y-2">
                         <label htmlFor={quality.name} className="block text-sm font-medium text-gray-700">{quality.label}</label>
-                          <input
+                        <input
                           id={quality.name}
                           name={quality.name}
-                            type="url"
+                          type="url"
                           placeholder={`https://example.com/video_${quality.name}.mp4`}
                           defaultValue={selectedContent?.[quality.name] as string | undefined}
                           disabled={isLoading}
-                          className="w-full px-3 py-2 border rounded-md text-black focus:outline-none focus:ring-2 focus:ring-[#E50914] focus:border-transparent"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-[#E50914] focus:border-transparent"
                         />
                         {validationErrors[quality.name] && (
                           <p className="text-sm text-red-500">
                             {validationErrors[quality.name]}
                           </p>
                         )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Master URLs Section */}
+                {(modalMode === 'add-movie' || (selectedContent && selectedContent.type === 'movie')) && (
+                  <div className="bg-gray-50 p-6 rounded-lg space-y-6">
+                    <h3 className="text-xl font-semibold text-gray-900 border-b pb-3">Master URLs</h3>
+                    <div className="grid grid-cols-2 gap-6">
+                      {[
+                        { label: "Master URL", name: "master_url" as keyof Content },
+                        { label: "Master URL 480p", name: "master_url_480p" as keyof Content },
+                        { label: "Master URL 720p", name: "master_url_720p" as keyof Content },
+                        { label: "Master URL 1080p", name: "master_url_1080p" as keyof Content },
+                      ].map(q => (
+                        <div className="space-y-2" key={q.name}>
+                          <label className="block text-sm font-medium text-gray-700">{q.label}</label>
+                          <input
+                            type="url"
+                            name={q.name}
+                            defaultValue={selectedContent?.[q.name] as string | undefined}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-[#E50914] focus:border-transparent"
+                          />
+                          {validationErrors[q.name] && (
+                            <p className="text-red-500 text-sm">{validationErrors[q.name]}</p>
+                          )}
                         </div>
                       ))}
                     </div>
                   </div>
+                )}
 
-                {/* Subtitle URLs */}
-                <div className="space-y-4">
-                  <h5 className="font-medium">Subtitles</h5>
+                {/* Subtitles Section */}
+                <div className="bg-gray-50 p-6 rounded-lg space-y-6">
+                  <h3 className="text-xl font-semibold text-gray-900 border-b pb-3">Subtitles</h3>
                   <SubtitleManager
                     value={selectedContent?.subtitle_urls || {}}
                     onChange={(value) => {
@@ -483,7 +510,6 @@ const ContentManagement = () => {
                           subtitle_urls: value
                         });
                       }
-                      // Update the hidden input value
                       const form = document.querySelector('form');
                       const subtitleUrlsInput = form?.elements.namedItem('subtitle_urls') as HTMLTextAreaElement;
                       if (subtitleUrlsInput) {
@@ -500,38 +526,10 @@ const ContentManagement = () => {
                   />
                 </div>
 
-                {/* Master URL for Series/Movies */}
-                {(modalMode === 'add-movie' || (selectedContent && selectedContent.type === 'movie')) && (
-                  <div className="space-y-4">
-                    <h4 className="font-medium text-black">Master URLs</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      {[
-                        { label: "Master URL", name: "master_url" as keyof Content },
-                        { label: "Master URL 480p", name: "master_url_480p" as keyof Content },
-                        { label: "Master URL 720p", name: "master_url_720p" as keyof Content },
-                        { label: "Master URL 1080p", name: "master_url_1080p" as keyof Content },
-                      ].map(q => (
-                        <div className="space-y-2" key={q.name}>
-                          <label className="block text-sm font-medium text-black">{q.label}</label>
-                          <input
-                            type="url"
-                            name={q.name}
-                            defaultValue={selectedContent?.[q.name] as string | undefined}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                          />
-                          {validationErrors[q.name] && (
-                            <p className="text-red-500 text-sm">{validationErrors[q.name]}</p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Genres */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Genres</label>
-                  <div className="grid grid-cols-3 gap-2 border border-gray-300 rounded-md p-4 max-h-48 overflow-y-auto">
+                {/* Genres Section */}
+                <div className="bg-gray-50 p-6 rounded-lg space-y-6">
+                  <h3 className="text-xl font-semibold text-gray-900 border-b pb-3">Genres</h3>
+                  <div className="grid grid-cols-3 gap-4 border border-gray-300 rounded-lg p-6 max-h-48 overflow-y-auto">
                     {genres.map(genre => (
                       <div key={genre.id} className="flex items-center">
                         <input
@@ -559,71 +557,82 @@ const ContentManagement = () => {
                 </div>
 
                 {/* Featured Toggle */}
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="featured"
-                    name="featured"
-                    defaultChecked={selectedContent?.featured}
-                    className="h-4 w-4 text-[#E50914] focus:ring-[#E50914] border-gray-300 rounded"
-                  />
-                  <label htmlFor="featured" className="text-sm text-gray-700">
-                    Featured content
-                  </label>
+                <div className="bg-gray-50 p-6 rounded-lg space-y-6">
+                  <h3 className="text-xl font-semibold text-gray-900 border-b pb-3">Featured Status</h3>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="featured"
+                      name="featured"
+                      defaultChecked={selectedContent?.featured}
+                      className="h-5 w-5 text-[#E50914] focus:ring-[#E50914] border-gray-300 rounded"
+                    />
+                    <label htmlFor="featured" className="text-sm font-medium text-gray-700">
+                      Featured content
+                    </label>
+                  </div>
                 </div>
 
                 {/* Cast Section */}
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Cast</h3>
+                <div className="bg-gray-50 p-6 rounded-lg space-y-6">
+                  <h3 className="text-xl font-semibold text-gray-900 border-b pb-3">Cast</h3>
                   <div className="space-y-4">
                     {cast.map((member, idx) => (
-                      <div key={member.id} className="grid grid-cols-12 gap-2 items-end bg-gray-50 p-2 rounded">
+                      <div key={member.id} className="grid grid-cols-12 gap-4 items-end bg-white p-4 rounded-lg shadow-sm">
                         <div className="col-span-4">
-                          <label className="block text-xs font-medium text-gray-700">Name</label>
+                          <label className="block text-sm font-medium text-gray-700">Name</label>
                           <input
                             type="text"
                             value={member.name}
                             onChange={e => handleCastChange(member.id, 'name', e.target.value)}
-                            className="w-full px-2 py-1 border rounded text-black"
+                            className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-[#E50914] focus:border-transparent"
                             placeholder="Actor Name"
                             required
                           />
                         </div>
                         <div className="col-span-4">
-                          <label className="block text-xs font-medium text-gray-700">Role</label>
+                          <label className="block text-sm font-medium text-gray-700">Role</label>
                           <input
                             type="text"
                             value={member.role}
                             onChange={e => handleCastChange(member.id, 'role', e.target.value)}
-                            className="w-full px-2 py-1 border rounded text-black"
+                            className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-[#E50914] focus:border-transparent"
                             placeholder="Character Name"
                           />
                         </div>
                         <div className="col-span-3">
-                          <label className="block text-xs font-medium text-gray-700">Photo URL</label>
+                          <label className="block text-sm font-medium text-gray-700">Photo URL</label>
                           <input
                             type="url"
                             value={member.photoUrl}
                             onChange={e => handleCastChange(member.id, 'photoUrl', e.target.value)}
-                            className="w-full px-2 py-1 border rounded text-black"
+                            className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-[#E50914] focus:border-transparent"
                             placeholder="https://..."
                           />
                         </div>
                         <div className="col-span-1 flex justify-end">
-                          <button type="button" onClick={() => handleRemoveCast(member.id)} className="text-red-500 hover:text-red-700 p-1">
+                          <button 
+                            type="button" 
+                            onClick={() => handleRemoveCast(member.id)} 
+                            className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50"
+                          >
                             <Trash2 size={18} />
                           </button>
                         </div>
                       </div>
                     ))}
-                    <button type="button" onClick={handleAddCast} className="flex items-center gap-2 px-3 py-1 bg-[#E50914] text-white rounded hover:bg-[#E50914]/80 mt-2">
+                    <button 
+                      type="button" 
+                      onClick={handleAddCast} 
+                      className="flex items-center gap-2 px-4 py-2 bg-[#E50914] text-white rounded-lg hover:bg-[#E50914]/90 transition-colors"
+                    >
                       <Plus size={16} /> Add Cast Member
                     </button>
                   </div>
                 </div>
 
                 {/* Form Actions */}
-                <div className="flex justify-end space-x-3 pt-6">
+                <div className="flex justify-end space-x-4 pt-6">
                   <button
                     type="button"
                     onClick={() => {
@@ -631,14 +640,14 @@ const ContentManagement = () => {
                       setSelectedContent(null);
                       setSelectedGenres([]);
                     }}
-                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                    className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="px-4 py-2 bg-[#E50914] text-white rounded-md hover:bg-[#E50914]/90 disabled:opacity-50"
+                    className="px-6 py-2 bg-[#E50914] text-white rounded-lg hover:bg-[#E50914]/90 disabled:opacity-50 transition-colors"
                   >
                     {isLoading ? 'Saving...' : modalMode.startsWith('add') ? 'Add Content' : 'Save Changes'}
                   </button>
