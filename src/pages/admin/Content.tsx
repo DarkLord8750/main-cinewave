@@ -4,6 +4,14 @@ import { Content, useContentStore } from '../../stores/contentStore';
 import { useGenreStore } from '../../stores/genreStore';
 import SeriesManager from '../../components/admin/SeriesManager';
 import ContentTable from '../../components/admin/ContentTable';
+import { SubtitleManager } from '../../components/admin/SubtitleManager';
+
+interface CastMember {
+  id: string;
+  name: string;
+  role: string;
+  photoUrl: string;
+}
 
 // Define ratings for the dropdown
 const ratings = ["G","A", "PG", "PG-13", "R", "NC-17", "TV-Y", "TV-G", "TV-PG", "TV-14", "TV-MA"];
@@ -14,7 +22,7 @@ const videoQualities = [
   { label: "720p", name: "videoUrl720p" as keyof Content },
   { label: "1080p", name: "videoUrl1080p" as keyof Content },
   { label: "4K", name: "videoUrl4k" as keyof Content },
-];
+] as const;
 
 // Helper for rendering input fields (for DRYness)
 const renderInput = (
@@ -264,6 +272,11 @@ const ContentManagement = () => {
         videoUrl720p: formData.get('videoUrl720p') as string || undefined,
         videoUrl1080p: formData.get('videoUrl1080p') as string || undefined,
         videoUrl4k: formData.get('videoUrl4k') as string || undefined,
+        subtitle_urls: JSON.parse(formData.get('subtitle_urls') as string || '{}')
+      } : {}),
+      // Include subtitle URLs for series as well
+      ...(type === 'series' ? {
+        subtitle_urls: JSON.parse(formData.get('subtitle_urls') as string || '{}')
       } : {})
     };
 
@@ -432,25 +445,60 @@ const ContentManagement = () => {
                   )}
                 </div>
 
-                {/* Video Quality URLs - Only show for movies */}
-                {(modalMode === 'add-movie' || (selectedContent && selectedContent.type === 'movie')) && (
-                  <div className="space-y-4">
-                    <h4 className="font-medium text-black">Video Quality URLs</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      {videoQualities.map(q => (
-                        <div className="space-y-2" key={q.name}>
-                          <label className="block text-sm font-medium text-black">{q.label} URL</label>
-                          <input
-                            type="url"
-                            name={q.name}
-                            defaultValue={selectedContent?.[q.name] as string | undefined}
-                            className="mt-1 text-black block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                          />
-                        </div>
-                      ))}
-                    </div>
+                {/* Video Quality URLs */}
+                <div className="space-y-4">
+                  <h5 className="font-medium">Video Quality URLs</h5>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {videoQualities.map(quality => (
+                      <div key={quality.name} className="space-y-2">
+                        <label htmlFor={quality.name} className="block text-sm font-medium text-gray-700">{quality.label}</label>
+                        <input
+                          id={quality.name}
+                          name={quality.name}
+                          type="url"
+                          placeholder={`https://example.com/video_${quality.name}.mp4`}
+                          defaultValue={selectedContent?.[quality.name] as string | undefined}
+                          disabled={isLoading}
+                          className="w-full px-3 py-2 border rounded-md text-black focus:outline-none focus:ring-2 focus:ring-[#E50914] focus:border-transparent"
+                        />
+                        {validationErrors[quality.name] && (
+                          <p className="text-sm text-red-500">
+                            {validationErrors[quality.name]}
+                          </p>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                )}
+                </div>
+
+                {/* Subtitle URLs */}
+                <div className="space-y-4">
+                  <h5 className="font-medium">Subtitles</h5>
+                  <SubtitleManager
+                    value={selectedContent?.subtitle_urls || {}}
+                    onChange={(value) => {
+                      if (selectedContent) {
+                        setSelectedContent({
+                          ...selectedContent,
+                          subtitle_urls: value
+                        });
+                      }
+                      // Update the hidden input value
+                      const form = document.querySelector('form');
+                      const subtitleUrlsInput = form?.elements.namedItem('subtitle_urls') as HTMLTextAreaElement;
+                      if (subtitleUrlsInput) {
+                        subtitleUrlsInput.value = JSON.stringify(value);
+                      }
+                    }}
+                    disabled={isLoading}
+                  />
+                  <textarea
+                    id="subtitle_urls"
+                    name="subtitle_urls"
+                    className="hidden"
+                    defaultValue={JSON.stringify(selectedContent?.subtitle_urls || {})}
+                  />
+                </div>
 
                 {/* Master URL for Series/Movies */}
                 {(modalMode === 'add-movie' || (selectedContent && selectedContent.type === 'movie')) && (
@@ -470,7 +518,6 @@ const ContentManagement = () => {
                             name={q.name}
                             defaultValue={selectedContent?.[q.name] as string | undefined}
                             className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                            className="w-full px-3 py-2 border rounded-md text-black focus:outline-none focus:ring-2 focus:ring-[#E50914] focus:border-transparent"
                           />
                           {validationErrors[q.name] && (
                             <p className="text-red-500 text-sm">{validationErrors[q.name]}</p>
