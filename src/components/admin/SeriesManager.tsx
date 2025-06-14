@@ -300,7 +300,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
     
     const form = e.currentTarget as HTMLFormElement;
     const formData = {
-      episodeNumber: parseInt((form.elements.namedItem('episodeNumber') as HTMLInputElement)?.value || '0'),
+      episodeNumber: Number((form.elements.namedItem('episodeNumber') as HTMLInputElement)?.value || '0'),
       title: (form.elements.namedItem('title') as HTMLInputElement)?.value || '',
       duration: (form.elements.namedItem('duration') as HTMLInputElement)?.value || '',
       master_url: (form.elements.namedItem('master_url') as HTMLInputElement)?.value || undefined,
@@ -334,7 +334,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
         videoUrl720p: formData.videoUrl720p || undefined,
         videoUrl1080p: formData.videoUrl1080p || undefined,
         videoUrl4k: formData.videoUrl4k || undefined,
-        subtitle_urls: formData.subtitle_urls || undefined
+        subtitle_urls: formData.subtitle_urls
       };
 
       await updateEpisode(editingEpisodeId, episodeData);
@@ -342,7 +342,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
       // Update local state immediately
       const updatedSeasons = seasons.map(season => ({
         ...season,
-        episodes: (season.episodes || []).map(ep => 
+        episodes: (season.episodes ?? []).map(ep => 
           ep.id === editingEpisodeId ? { ...ep, ...episodeData } : ep
         )
       }));
@@ -885,6 +885,12 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                       if (subtitleUrlsInput) {
                         subtitleUrlsInput.value = JSON.stringify({}, null, 2);
                       }
+                      if (editingEpisodeId && editEpisodeData) {
+                        setEditEpisodeData({
+                          ...editEpisodeData,
+                          subtitle_urls: {}
+                        });
+                      }
                     }}
                     className="text-sm bg-white/80 backdrop-blur-sm border-gray-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-200 flex items-center gap-1.5 px-3 py-1.5 rounded-lg shadow-sm hover:shadow"
                   >
@@ -896,6 +902,12 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                   <SubtitleManager
                     value={editEpisodeData?.subtitle_urls || {}}
                     onChange={(value) => {
+                      if (editingEpisodeId && editEpisodeData) {
+                        setEditEpisodeData({
+                          ...editEpisodeData,
+                          subtitle_urls: value
+                        });
+                      }
                       const form = document.querySelector('form');
                       const subtitleUrlsInput = form?.elements.namedItem('subtitle_urls') as HTMLTextAreaElement;
                       if (subtitleUrlsInput) {
