@@ -8,9 +8,10 @@ import { useAuthStore } from '../../stores/authStore';
 interface ContentCardProps {
   content: Content & { _watch?: any };
   onPlay?: (content: Content) => void;
+  className?: string;
 }
 
-const ContentCard = ({ content, onPlay }: ContentCardProps) => {
+const ContentCard = ({ content, onPlay, className }: ContentCardProps) => {
   const [isHovered, setIsHovered] = useState(false);
   const { addToMyList, removeFromMyList, isInMyList } = useContentStore();
   const { history } = useWatchHistoryStore();
@@ -63,7 +64,7 @@ const ContentCard = ({ content, onPlay }: ContentCardProps) => {
 
   return (
     <div
-      className="block relative w-[140px] sm:w-[180px] md:w-[200px] group cursor-pointer"
+      className={`${className || ''} block relative w-[140px] sm:w-[180px] md:w-[200px] group cursor-pointer`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClick={handleCardClick}
