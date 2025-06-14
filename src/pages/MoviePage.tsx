@@ -195,7 +195,8 @@ const MoviePage = () => {
               alt={content.title}
               className="w-full h-full object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-netflix-black via-netflix-black/90 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-transparent to-transparent" />
           </div>
 
           {/* Content Section */}
@@ -203,11 +204,14 @@ const MoviePage = () => {
             <div className="flex flex-col md:flex-row gap-6 md:gap-8">
               {/* Poster */}
               <div className="hidden md:block w-[300px] flex-shrink-0">
-                <img
-                  src={content.posterImage}
-                  alt={content.title}
-                  className="w-full rounded-md shadow-lg"
-                />
+                <div className="relative group">
+                  <img
+                    src={content.posterImage}
+                    alt={content.title}
+                    className="w-full rounded-md shadow-lg transition-transform duration-300 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md" />
+                </div>
               </div>
 
               {/* Info */}
@@ -219,73 +223,96 @@ const MoviePage = () => {
                 {/* Metadata */}
                 <div className="flex flex-wrap items-center gap-2 sm:gap-4 mb-4 md:mb-6 text-white text-sm sm:text-base">
                   <span>{content.releaseYear}</span>
-                  <span className="border px-2 py-0.5 text-sm rounded">
+                  <span className="border px-2 py-0.5 text-sm rounded bg-white/10 backdrop-blur-sm">
                     {content.maturityRating}
                   </span>
-                  <span className="px-2 py-0.5 border rounded">HD</span>
+                  <span className="px-2 py-0.5 border rounded bg-white/10 backdrop-blur-sm">HD</span>
+                  <span className="text-netflix-red font-medium">New</span>
                 </div>
 
                 {/* Action Buttons */}
                 <div className="flex items-center gap-3 mb-6">
                   <button
                     onClick={handlePlay}
-                    className="flex items-center justify-center gap-2 px-6 sm:px-8 py-2 sm:py-3 bg-white text-black font-bold rounded-md hover:bg-gray-200 transition shadow-lg"
+                    className="group relative flex items-center gap-2 px-6 sm:px-8 py-2 sm:py-3 bg-netflix-red hover:bg-red-700 rounded-lg text-white transition-all duration-300 shadow-lg hover:shadow-red-500/30 overflow-hidden"
                   >
-                    <Play size={20} fill="black" />
-                    <span>Play</span>
+                    <div className="absolute inset-0 bg-gradient-to-r from-red-600 to-red-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-red-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    <div className="relative flex items-center gap-2">
+                      <Play className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
+                      <span className="font-medium tracking-wide">Play</span>
+                    </div>
                   </button>
                   <button
                     onClick={handleMyList}
-                    className="flex items-center justify-center gap-2 px-6 sm:px-8 py-2 sm:py-3 bg-gray-700/80 text-white font-bold rounded-md hover:bg-gray-600 transition shadow-lg"
+                    className="group relative flex items-center gap-2 px-6 sm:px-8 py-2 sm:py-3 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all duration-300 border border-white/10 hover:border-white/20 overflow-hidden"
                   >
-                    {inMyList ? <Check size={20} /> : <Plus size={20} />}
-                    <span className="hidden sm:inline">{inMyList ? 'Remove from List' : 'My List'}</span>
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    <div className="relative flex items-center gap-2">
+                      {inMyList ? <Check className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                      <span className="font-medium tracking-wide">My List</span>
+                    </div>
                   </button>
-                  
-                  {/* Download Button with Quality Menu */}
                   <div className="relative">
                     <button
                       onClick={() => setShowDownloadMenu(!showDownloadMenu)}
-                      className="flex items-center justify-center gap-2 px-6 sm:px-8 py-2 sm:py-3 bg-gray-700/80 text-white font-bold rounded-md hover:bg-gray-600 transition shadow-lg"
+                      className="group relative flex items-center gap-2 px-6 sm:px-8 py-2 sm:py-3 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all duration-300 border border-white/10 hover:border-white/20 overflow-hidden"
                     >
-                      <Download size={20} />
-                      <span className="hidden sm:inline">Download</span>
-                      <ChevronDown size={16} className={`transition-transform ${showDownloadMenu ? 'rotate-180' : ''}`} />
+                      <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                      <div className="relative flex items-center gap-2">
+                        <Download className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
+                        <span className="font-medium tracking-wide">Download</span>
+                      </div>
                     </button>
-
                     {showDownloadMenu && (
-                      <div className="absolute right-0 mt-2 w-48 bg-netflix-gray rounded-lg shadow-lg z-10">
-                        <div className="py-1">
+                      <div className="absolute right-0 mt-2 w-56 bg-[#1f1f1f]/95 rounded-lg shadow-xl z-10 border border-white/10 backdrop-blur-md">
+                        <div className="py-1.5">
                           {content.videoUrl1080p && (
                             <button
                               onClick={() => handleDownload('1080p')}
-                              className="w-full px-4 py-2 text-left text-white hover:bg-netflix-gray-hover"
+                              className="group w-full px-4 py-2.5 text-left text-white hover:bg-white/10 transition-all duration-200 flex items-center justify-between"
                             >
-                              1080p
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">1080p</span>
+                                <span className="text-xs text-gray-400 group-hover:text-white">Full HD</span>
+                              </div>
+                              <span className="text-xs text-gray-500 group-hover:text-white">Best Quality</span>
                             </button>
                           )}
                           {content.videoUrl720p && (
                             <button
                               onClick={() => handleDownload('720p')}
-                              className="w-full px-4 py-2 text-left text-white hover:bg-netflix-gray-hover"
+                              className="group w-full px-4 py-2.5 text-left text-white hover:bg-white/10 transition-all duration-200 flex items-center justify-between"
                             >
-                              720p
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">720p</span>
+                                <span className="text-xs text-gray-400 group-hover:text-white">HD</span>
+                              </div>
+                              <span className="text-xs text-gray-500 group-hover:text-white">Good Quality</span>
                             </button>
                           )}
                           {content.videoUrl480p && (
                             <button
                               onClick={() => handleDownload('480p')}
-                              className="w-full px-4 py-2 text-left text-white hover:bg-netflix-gray-hover"
+                              className="group w-full px-4 py-2.5 text-left text-white hover:bg-white/10 transition-all duration-200 flex items-center justify-between"
                             >
-                              480p
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">480p</span>
+                                <span className="text-xs text-gray-400 group-hover:text-white">SD</span>
+                              </div>
+                              <span className="text-xs text-gray-500 group-hover:text-white">Standard</span>
                             </button>
                           )}
                           {content.videoUrl4k && (
                             <button
                               onClick={() => handleDownload('4K')}
-                              className="w-full px-4 py-2 text-left text-white hover:bg-netflix-gray-hover"
+                              className="group w-full px-4 py-2.5 text-left text-white hover:bg-white/10 transition-all duration-200 flex items-center justify-between"
                             >
-                              4K
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">4K</span>
+                                <span className="text-xs text-gray-400 group-hover:text-white">Ultra HD</span>
+                              </div>
+                              <span className="text-xs text-gray-500 group-hover:text-white">Premium</span>
                             </button>
                           )}
                         </div>
@@ -294,14 +321,12 @@ const MoviePage = () => {
                   </div>
                 </div>
 
-                {/* Description */}
                 <p className="text-white text-sm sm:text-base md:text-lg mb-6 md:mb-8 line-clamp-3 sm:line-clamp-none">
                   {content.description}
                 </p>
 
                 {/* Cast & Genres */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
-                  {/* Cast */}
+                <div className="space-y-4">
                   {content.cast && content.cast.length > 0 && (
                     <div>
                       <span className="text-netflix-gray">Cast:</span>
@@ -312,7 +337,7 @@ const MoviePage = () => {
                               <img
                                 src={member.photoUrl}
                                 alt={member.name}
-                                className="w-7 h-7 rounded-full object-cover"
+                                className="w-7 h-7 rounded-full object-cover ring-2 ring-white/20"
                               />
                             )}
                             <div>
@@ -333,7 +358,7 @@ const MoviePage = () => {
                     <span className="text-netflix-gray">Genres:</span>
                     <div className="text-white mt-2 flex flex-wrap gap-2">
                       {content.genre.map((genre, index) => (
-                        <span key={genre} className="bg-netflix-gray/20 px-2 py-1 rounded-full text-xs">
+                        <span key={genre} className="bg-white/10 backdrop-blur-sm px-3 py-1 rounded-full text-xs">
                           {genre}
                         </span>
                       ))}
@@ -352,25 +377,25 @@ const MoviePage = () => {
                 {similarMovies.map((movie) => (
                   <div 
                     key={movie.id} 
-                    className="netflix-card cursor-pointer"
+                    className="group relative aspect-[2/3] rounded-lg overflow-hidden cursor-pointer"
                     onClick={() => navigate(`/movie/${movie.id}`)}
                   >
-                    <div className="aspect-[2/3] rounded-md overflow-hidden">
-                      <img
-                        src={movie.posterImage}
-                        alt={movie.title}
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                      />
-                    </div>
-                    <div className="mt-2">
-                      <h3 className="text-white text-sm font-medium truncate">
-                        {movie.title}
-                      </h3>
-                      <div className="flex items-center gap-2 text-xs text-netflix-gray mt-1">
-                        <span>{movie.releaseYear}</span>
-                        <span>•</span>
-                        <span className="truncate">{movie.genre.slice(0, 2).join(', ')}</span>
+                    <img
+                      src={movie.posterImage}
+                      alt={movie.title}
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                      loading="lazy"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <div className="absolute bottom-0 left-0 right-0 p-4">
+                        <h3 className="text-white font-semibold text-sm md:text-base mb-1 line-clamp-2">
+                          {movie.title}
+                        </h3>
+                        <div className="flex items-center gap-2 text-gray-300 text-xs">
+                          <span>{movie.releaseYear}</span>
+                          <span>•</span>
+                          <span className="truncate">{movie.genre.slice(0, 2).join(', ')}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
