@@ -30,9 +30,11 @@ export interface Content {
 
 export interface Season {
   id: string;
-  seriesId: string;
   seasonNumber: number;
-  episodes: Episode[];
+  seriesId?: string;
+  episodes?: Episode[];
+  title?: string;
+  description?: string | null;
 }
 
 export interface Episode {
@@ -40,7 +42,9 @@ export interface Episode {
   seasonId: string;
   episodeNumber: number;
   title: string;
+  description?: string;
   duration: string;
+  thumbnail?: string;
   master_url?: string;
   master_url_480p?: string;
   master_url_720p?: string;
@@ -706,13 +710,22 @@ export const useContentStore = create<ContentState>()(
 
       addSeason: async (contentId: string, season: Omit<Season, 'id' | 'episodes'>) => {
         try {
-          const { data: newSeason, error } = await supabase.rpc('create_season', {
+          const { data: newSeason, error } = await supabase.rpc('create_series_and_season', {
             p_content_id: contentId,
-            p_season_number: season.seasonNumber
+            p_description: season.description || null,
+            p_season_number: season.seasonNumber,
+            p_title: season.title || `Season ${season.seasonNumber}`
           });
           if (error) throw error;
           await get().fetchContents();
-          return { id: newSeason, seasonNumber: season.seasonNumber, episodes: [] };
+          return { 
+            id: newSeason, 
+            seasonNumber: season.seasonNumber, 
+            seriesId: contentId,
+            episodes: [],
+            title: season.title,
+            description: season.description
+          } as Season;
         } catch (error) {
           console.error('Error adding season:', error);
           throw error;
@@ -757,16 +770,18 @@ export const useContentStore = create<ContentState>()(
             p_season_id: seasonId,
             p_episode_number: episode.episodeNumber,
             p_title: episode.title,
+            p_description: episode.description || '',
             p_duration: episode.duration || '',
+            p_thumbnail: episode.thumbnail || '',
+            p_video_url_480p: episode.videoUrl480p,
+            p_video_url_720p: episode.videoUrl720p,
+            p_video_url_1080p: episode.videoUrl1080p,
+            p_video_url_4k: episode.videoUrl4k,
             p_master_url: episode.master_url,
-             p_master_url_480p: episode.master_url_480p,
-             p_master_url_720p: episode.master_url_720p,
-             p_master_url_1080p: episode.master_url_1080p,
-             p_video_url_480p: episode.videoUrl480p,
-             p_video_url_720p: episode.videoUrl720p,
-             p_video_url_1080p: episode.videoUrl1080p,
-             p_video_url_4k: episode.videoUrl4k,
-             p_subtitle_urls: episode.subtitle_urls
+            p_master_url_480p: episode.master_url_480p,
+            p_master_url_720p: episode.master_url_720p,
+            p_master_url_1080p: episode.master_url_1080p,
+            p_subtitle_urls: episode.subtitle_urls
           });
           if (error) throw error;
           await get().fetchContents();
@@ -785,15 +800,15 @@ export const useContentStore = create<ContentState>()(
               episode_number: episode.episodeNumber,
               title: episode.title,
               duration: episode.duration,
-              p_master_url: episode.master_url,
-              p_master_url_480p: episode.master_url_480p,
-              p_master_url_720p: episode.master_url_720p,
-              p_master_url_1080p: episode.master_url_1080p,
+              master_url: episode.master_url,
+              master_url_480p: episode.master_url_480p,
+              master_url_720p: episode.master_url_720p,
+              master_url_1080p: episode.master_url_1080p,
               video_url_480p: episode.videoUrl480p,
               video_url_720p: episode.videoUrl720p,
               video_url_1080p: episode.videoUrl1080p,
               video_url_4k: episode.videoUrl4k,
-              p_subtitle_urls: episode.subtitle_urls
+              subtitle_urls: episode.subtitle_urls
             })
             .eq('id', episodeId);
           if (error) throw error;
