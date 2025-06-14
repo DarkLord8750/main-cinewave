@@ -410,19 +410,19 @@ const SeriesPage = () => {
                     Episodes
                   </h2>
                   <div className="relative season-dropdown">
-                    <button
-                      onClick={handleSeasonClick}
+                <button
+                  onClick={handleSeasonClick}
                       className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all duration-200"
-                    >
-                      <span>Season {selectedSeason?.season_number}</span>
+                >
+                  <span>Season {selectedSeason?.season_number}</span>
                       <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showSeasonDropdown ? 'rotate-180' : ''}`} />
-                    </button>
+                </button>
                     {showSeasonDropdown && (
                       <div className="absolute top-full left-0 mt-2 w-48 bg-[#1f1f1f] rounded-lg shadow-xl z-10 border border-white/10 backdrop-blur-md">
                         <div className="py-1">
-                          {seasons.map(season => (
+                    {seasons.map(season => (
                             <button
-                              key={season.id}
+                        key={season.id} 
                               onClick={() => handleSeasonSelect(season)}
                               className="w-full px-4 py-2.5 text-left text-white hover:bg-white/10 transition-all duration-200 flex items-center justify-between"
                             >
@@ -588,44 +588,44 @@ const SeriesPage = () => {
                 </div>
               </section>
             )}
-          </div>
-
-          {/* Mobile Season Picker Bottom Sheet */}
-          {showSeasonPicker && (
-            <div className="fixed inset-0 z-50 sm:hidden">
-              <div 
-                className="absolute inset-0 bg-black/60"
-                onClick={() => setShowSeasonPicker(false)}
-              />
-              <div className="absolute bottom-0 left-0 right-0 bg-[#1f1f1f] rounded-t-xl max-h-[80vh] overflow-y-auto">
-                <div className="sticky top-0 flex items-center justify-between p-4 bg-[#1f1f1f] border-b border-gray-800">
-                  <h3 className="text-lg font-medium text-white">Select Season</h3>
-                  <button 
-                    onClick={() => setShowSeasonPicker(false)}
-                    className="p-1 text-gray-400 hover:text-white"
-                  >
-                    <X size={24} />
-                  </button>
-                </div>
-                <div className="py-2">
-                  {seasons.map(season => (
-                    <button
-                      key={season.id}
-                      onClick={() => handleSeasonSelect(season)}
-                      className={`w-full px-6 py-4 text-left text-white hover:bg-[#2f2f2f] transition-colors flex items-center justify-between ${
-                        selectedSeason?.id === season.id ? 'bg-[#2f2f2f]' : ''
-                      }`}
-                    >
-                      <span className="text-base">Season {season.season_number}</span>
-                      {selectedSeason?.id === season.id && (
-                        <Check size={20} className="text-netflix-red" />
-                      )}
-                    </button>
-                  ))}
-                </div>
               </div>
-            </div>
-          )}
+
+              {/* Mobile Season Picker Bottom Sheet */}
+              {showSeasonPicker && (
+                <div className="fixed inset-0 z-50 sm:hidden">
+                  <div 
+                    className="absolute inset-0 bg-black/60"
+                    onClick={() => setShowSeasonPicker(false)}
+                  />
+                  <div className="absolute bottom-0 left-0 right-0 bg-[#1f1f1f] rounded-t-xl max-h-[80vh] overflow-y-auto">
+                    <div className="sticky top-0 flex items-center justify-between p-4 bg-[#1f1f1f] border-b border-gray-800">
+                      <h3 className="text-lg font-medium text-white">Select Season</h3>
+                      <button 
+                        onClick={() => setShowSeasonPicker(false)}
+                        className="p-1 text-gray-400 hover:text-white"
+                      >
+                        <X size={24} />
+                      </button>
+                    </div>
+                    <div className="py-2">
+                      {seasons.map(season => (
+                        <button
+                          key={season.id}
+                          onClick={() => handleSeasonSelect(season)}
+                          className={`w-full px-6 py-4 text-left text-white hover:bg-[#2f2f2f] transition-colors flex items-center justify-between ${
+                            selectedSeason?.id === season.id ? 'bg-[#2f2f2f]' : ''
+                          }`}
+                        >
+                          <span className="text-base">Season {season.season_number}</span>
+                          {selectedSeason?.id === season.id && (
+                            <Check size={20} className="text-netflix-red" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
         </>
       )}
     </div>
