@@ -177,6 +177,7 @@ const MoviePage = () => {
             isFullScreen={true}
             autoPlay={true}
             startTime={startTime}
+            subtitleUrls={content.subtitle_urls}
           />
         </div>
       ) : (
