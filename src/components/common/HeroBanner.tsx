@@ -9,6 +9,13 @@ interface HeroBannerProps {
 const HeroBanner = ({ content }: HeroBannerProps) => {
   const navigate = useNavigate();
 
+  console.log('HeroBanner content:', content);
+
+  // If content is not provided, render nothing to prevent errors
+  if (!content) {
+    return null;
+  }
+
   const handlePlay = () => {
     navigate(`/movie/${content.id}`);
   };
@@ -18,8 +25,8 @@ const HeroBanner = ({ content }: HeroBannerProps) => {
       {/* Backdrop image */}
       <div className="absolute inset-0 z-0 max-w-full overflow-x-hidden">
         <img 
-          src={content.backdropImage}
-          alt={content.title}
+          src={content?.backdropImage}
+          alt={content?.title}
           className="w-full h-full max-w-full object-cover object-center overflow-x-hidden"
         />
       </div>
