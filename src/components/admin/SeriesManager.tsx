@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash, ChevronDown, ChevronUp, Loader2, Trash2 } from 'lucide-react';
+import { Plus, Edit, Trash, ChevronDown, ChevronUp, Loader2, Trash2, X } from 'lucide-react';
 import { useContentStore, Season, Episode } from '../../stores/contentStore';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -48,7 +48,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
     // eslint-disable-next-line
   }, [contentId]);
 
-  const validateForm = (formData: Record<string, string>): boolean => {
+  const validateForm = (formData: Record<string, any>): boolean => {
     const errors: Record<string, string> = {};
     
     // Common validation rules
@@ -70,12 +70,15 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
 
     // Episode specific validations
     if ('episodeNumber' in formData) {
-      const episodeNum = parseInt(formData.episodeNumber);
+      const episodeNum = typeof formData.episodeNumber === 'string' 
+        ? parseInt(formData.episodeNumber) 
+        : formData.episodeNumber;
+      
       if (isNaN(episodeNum)) {
         errors.episodeNumber = 'Invalid episode number';
       } else if (episodeNum <= 0) {
         errors.episodeNumber = 'Episode number must be positive';
-      } else if (selectedSeason?.episodes.some(e => e.episodeNumber === episodeNum)) {
+      } else if (selectedSeason?.episodes?.some(e => e.episodeNumber === episodeNum && e.id !== editingEpisodeId)) {
         errors.episodeNumber = 'Episode number already exists in this season';
       }
     }
@@ -119,6 +122,8 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
     const form = e.currentTarget;
     const formData = {
       seasonNumber: (form.elements.namedItem('seasonNumber') as HTMLInputElement).value,
+      title: (form.elements.namedItem('title') as HTMLInputElement)?.value || '',
+      description: (form.elements.namedItem('description') as HTMLTextAreaElement)?.value || ''
     };
 
     try {
@@ -127,7 +132,9 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
 
       const seasonData = {
         seasonNumber: parseInt(formData.seasonNumber),
-        seriesId: contentId
+        seriesId: contentId,
+        title: formData.title.trim() || `Season ${formData.seasonNumber}`,
+        description: formData.description.trim() || null
       };
 
       // Validate season number is unique
@@ -170,47 +177,64 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
     
     const form = e.currentTarget as HTMLFormElement;
     const formData = {
-      episodeNumber: (form.elements.namedItem('episodeNumber') as HTMLInputElement)?.value,
-      title: (form.elements.namedItem('title') as HTMLInputElement)?.value,
-      duration: (form.elements.namedItem('duration') as HTMLInputElement)?.value,
-      master_url: (form.elements.namedItem('master_url') as HTMLInputElement)?.value,
-      master_url_480p: (form.elements.namedItem('master_url_480p') as HTMLInputElement)?.value,
-      master_url_720p: (form.elements.namedItem('master_url_720p') as HTMLInputElement)?.value,
-      master_url_1080p: (form.elements.namedItem('master_url_1080p') as HTMLInputElement)?.value,
-      videoUrl480p: (form.elements.namedItem('videoUrl480p') as HTMLInputElement)?.value,
-      videoUrl720p: (form.elements.namedItem('videoUrl720p') as HTMLInputElement)?.value,
-      videoUrl1080p: (form.elements.namedItem('videoUrl1080p') as HTMLInputElement)?.value,
-      videoUrl4k: (form.elements.namedItem('videoUrl4k') as HTMLInputElement)?.value,
+      episodeNumber: Number((form.elements.namedItem('episodeNumber') as HTMLInputElement)?.value || '0'),
+      title: (form.elements.namedItem('title') as HTMLInputElement)?.value || '',
+      duration: (form.elements.namedItem('duration') as HTMLInputElement)?.value || '',
+      master_url: (form.elements.namedItem('master_url') as HTMLInputElement)?.value || undefined,
+      master_url_480p: (form.elements.namedItem('master_url_480p') as HTMLInputElement)?.value || undefined,
+      master_url_720p: (form.elements.namedItem('master_url_720p') as HTMLInputElement)?.value || undefined,
+      master_url_1080p: (form.elements.namedItem('master_url_1080p') as HTMLInputElement)?.value || undefined,
+      videoUrl480p: (form.elements.namedItem('videoUrl480p') as HTMLInputElement)?.value || undefined,
+      videoUrl720p: (form.elements.namedItem('videoUrl720p') as HTMLInputElement)?.value || undefined,
+      videoUrl1080p: (form.elements.namedItem('videoUrl1080p') as HTMLInputElement)?.value || undefined,
+      videoUrl4k: (form.elements.namedItem('videoUrl4k') as HTMLInputElement)?.value || undefined,
       subtitle_urls: JSON.parse((form.elements.namedItem('subtitle_urls') as HTMLTextAreaElement)?.value || '{}')
     };
     
+    // Validate required fields
     if (!formData.title || !formData.title.trim()) {
       setValidationErrors(prev => ({ ...prev, title: 'Title is required' }));
       return;
     }
-    if (!validateForm(formData)) return;
+
+    // Validate duration format
+    if (!formData.duration.endsWith('m')) {
+      setValidationErrors(prev => ({ ...prev, duration: 'Duration must be in format like "45m"' }));
+      return;
+    }
+
+    // Validate at least one video URL
+    const hasVideoUrl = formData.master_url || formData.master_url_480p || formData.master_url_720p || 
+                       formData.master_url_1080p || formData.videoUrl480p || formData.videoUrl720p || 
+                       formData.videoUrl1080p || formData.videoUrl4k;
+    
+    if (!hasVideoUrl) {
+      setValidationErrors(prev => ({ ...prev, videoUrl: 'At least one video URL is required' }));
+      return;
+    }
 
     try {
       setIsLoading(true);
       const newEpisode = await addEpisode(selectedSeason.id, {
         seasonId: selectedSeason.id,
-        episodeNumber: parseInt(formData.episodeNumber),
+        episodeNumber: formData.episodeNumber,
         title: formData.title.trim(),
         duration: formData.duration,
-        master_url: formData.master_url || undefined,
-        master_url_480p: formData.master_url_480p || undefined,
-        master_url_720p: formData.master_url_720p || undefined,
-        master_url_1080p: formData.master_url_1080p || undefined,
-        videoUrl480p: formData.videoUrl480p || undefined,
-        videoUrl720p: formData.videoUrl720p || undefined,
-        videoUrl1080p: formData.videoUrl1080p || undefined,
-        videoUrl4k: formData.videoUrl4k || undefined,
+        master_url: formData.master_url,
+        master_url_480p: formData.master_url_480p,
+        master_url_720p: formData.master_url_720p,
+        master_url_1080p: formData.master_url_1080p,
+        videoUrl480p: formData.videoUrl480p,
+        videoUrl720p: formData.videoUrl720p,
+        videoUrl1080p: formData.videoUrl1080p,
+        videoUrl4k: formData.videoUrl4k,
         subtitle_urls: formData.subtitle_urls
       });
+
       // Update local state immediately
       const updatedSeasons = seasons.map(season => 
         season.id === selectedSeason.id
-          ? { ...season, episodes: [...season.episodes, newEpisode] }
+          ? { ...season, episodes: [...(season.episodes ?? []), newEpisode] }
           : season
       );
       onSeasonsUpdated?.(updatedSeasons);
@@ -267,43 +291,81 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
       ...episode,
       subtitle_urls: episode.subtitle_urls || {}
     });
+    setSelectedSeason(seasons.find(s => s.episodes?.some(e => e.id === episode.id)) || null);
   };
-  const cancelEditEpisode = () => {
-    setEditingEpisodeId(null);
-    setEditEpisodeData(null);
-  };
-  const saveEditEpisode = async (episode: Episode) => {
-    if (!editEpisodeData) return;
-    setIsLoading(true);
+
+  const handleEditEpisode = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedSeason || !editingEpisodeId || !editEpisodeData) return;
+    
+    const form = e.currentTarget as HTMLFormElement;
+    const formData = {
+      episodeNumber: parseInt((form.elements.namedItem('episodeNumber') as HTMLInputElement)?.value || '0'),
+      title: (form.elements.namedItem('title') as HTMLInputElement)?.value || '',
+      duration: (form.elements.namedItem('duration') as HTMLInputElement)?.value || '',
+      master_url: (form.elements.namedItem('master_url') as HTMLInputElement)?.value || undefined,
+      master_url_480p: (form.elements.namedItem('master_url_480p') as HTMLInputElement)?.value || undefined,
+      master_url_720p: (form.elements.namedItem('master_url_720p') as HTMLInputElement)?.value || undefined,
+      master_url_1080p: (form.elements.namedItem('master_url_1080p') as HTMLInputElement)?.value || undefined,
+      videoUrl480p: (form.elements.namedItem('videoUrl480p') as HTMLInputElement)?.value || undefined,
+      videoUrl720p: (form.elements.namedItem('videoUrl720p') as HTMLInputElement)?.value || undefined,
+      videoUrl1080p: (form.elements.namedItem('videoUrl1080p') as HTMLInputElement)?.value || undefined,
+      videoUrl4k: (form.elements.namedItem('videoUrl4k') as HTMLInputElement)?.value || undefined,
+      subtitle_urls: JSON.parse((form.elements.namedItem('subtitle_urls') as HTMLTextAreaElement)?.value || '{}')
+    };
+    
+    if (!formData.title || !formData.title.trim()) {
+      setValidationErrors(prev => ({ ...prev, title: 'Title is required' }));
+      return;
+    }
+    if (!validateForm(formData)) return;
+
     try {
-      await updateEpisode(episode.id, {
-        ...editEpisodeData,
-        master_url: editEpisodeData.master_url || undefined,
-        master_url_480p: editEpisodeData.master_url_480p || undefined,
-        master_url_720p: editEpisodeData.master_url_720p || undefined,
-        master_url_1080p: editEpisodeData.master_url_1080p || undefined,
-        videoUrl480p: editEpisodeData.videoUrl480p || undefined,
-        videoUrl720p: editEpisodeData.videoUrl720p || undefined,
-        videoUrl1080p: editEpisodeData.videoUrl1080p || undefined,
-        videoUrl4k: editEpisodeData.videoUrl4k || undefined,
-        subtitle_urls: editEpisodeData.subtitle_urls || undefined
-      });
+      setIsLoading(true);
+      const episodeData: Partial<Episode> = {
+        ...formData,
+        seasonId: selectedSeason.id,
+        episodeNumber: formData.episodeNumber,
+        master_url: formData.master_url || undefined,
+        master_url_480p: formData.master_url_480p || undefined,
+        master_url_720p: formData.master_url_720p || undefined,
+        master_url_1080p: formData.master_url_1080p || undefined,
+        videoUrl480p: formData.videoUrl480p || undefined,
+        videoUrl720p: formData.videoUrl720p || undefined,
+        videoUrl1080p: formData.videoUrl1080p || undefined,
+        videoUrl4k: formData.videoUrl4k || undefined,
+        subtitle_urls: formData.subtitle_urls || undefined
+      };
+
+      await updateEpisode(editingEpisodeId, episodeData);
+      
       // Update local state immediately
       const updatedSeasons = seasons.map(season => ({
         ...season,
-        episodes: season.episodes.map(ep => 
-          ep.id === episode.id ? { ...ep, ...editEpisodeData } : ep
+        episodes: (season.episodes || []).map(ep => 
+          ep.id === editingEpisodeId ? { ...ep, ...episodeData } : ep
         )
       }));
       onSeasonsUpdated?.(updatedSeasons);
       toast({ title: 'Episode updated successfully', variant: 'success' });
       setEditingEpisodeId(null);
       setEditEpisodeData(null);
+      setSelectedSeason(null);
     } catch (error) {
-      toast({ title: 'Failed to update episode', description: error instanceof Error ? error.message : 'Unknown error', variant: 'destructive' });
+      toast({ 
+        title: 'Failed to update episode', 
+        description: error instanceof Error ? error.message : 'Unknown error', 
+        variant: 'destructive' 
+      });
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const cancelEditEpisode = () => {
+    setEditingEpisodeId(null);
+    setEditEpisodeData(null);
+    setSelectedSeason(null);
   };
 
   const handleDeleteSeason = async (seasonId: string) => {
@@ -384,6 +446,28 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
               {validationErrors.seasonNumber && (
                 <p className="text-sm text-red-500">{validationErrors.seasonNumber}</p>
               )}
+            </div>
+            
+            <div className="space-y-2">
+              <label htmlFor="title" className="text-black font-medium">Title</label>
+              <Input
+                id="title"
+                name="title"
+                type="text"
+                disabled={isLoading}
+                className="text-black bg-white"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <label htmlFor="description" className="text-black font-medium">Description</label>
+              <textarea
+                id="description"
+                name="description"
+                className="text-black bg-white"
+                rows="3"
+                disabled={isLoading}
+              />
             </div>
             
             <div className="flex justify-end gap-2 mt-6">
@@ -514,45 +598,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                         </tr>
                       </thead>
                       <tbody>
-                        {season.episodes
-                            .sort((a, b) => (a.episodeNumber) - (b.episodeNumber))
-                          .map((episode) => (
-                              editingEpisodeId === episode.id ? (
-                                <tr key={episode.id} className="border-b bg-gray-50">
-                                  <td className="py-2"><input type="number" value={editEpisodeData?.episodeNumber ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, episodeNumber: Number(e.target.value) } : d)} className="w-16 border rounded p-2" /></td>
-                                  <td className="py-2"><input type="text" value={editEpisodeData?.title ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, title: e.target.value } : d)} className="w-32 border rounded p-2" /></td>
-                                  <td className="py-2"><input type="text" value={editEpisodeData?.duration ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, duration: e.target.value } : d)} className="w-20 border rounded p-2" /></td>
-                                  <td className="py-2">
-                                    <div className="space-y-2">
-                                      <input type="url" placeholder="Master URL" value={editEpisodeData?.master_url ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, master_url: e.target.value } : d)} className="w-24 border rounded p-2" />
-                                      <input type="url" placeholder="Master URL 480p" value={editEpisodeData?.master_url_480p ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, master_url_480p: e.target.value } : d)} className="w-24 border rounded p-2" />
-                                      <input type="url" placeholder="Master URL 720p" value={editEpisodeData?.master_url_720p ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, master_url_720p: e.target.value } : d)} className="w-24 border rounded p-2" />
-                                      <input type="url" placeholder="Master URL 1080p" value={editEpisodeData?.master_url_1080p ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, master_url_1080p: e.target.value } : d)} className="w-24 border rounded p-2" />
-                                      <input type="url" placeholder="480p" value={editEpisodeData?.videoUrl480p ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, videoUrl480p: e.target.value } : d)} className="w-24 border rounded p-2" />
-                                      <input type="url" placeholder="720p" value={editEpisodeData?.videoUrl720p ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, videoUrl720p: e.target.value } : d)} className="w-24 border rounded p-2" />
-                                      <input type="url" placeholder="1080p" value={editEpisodeData?.videoUrl1080p ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, videoUrl1080p: e.target.value } : d)} className="w-24 border rounded p-2" />
-                                      <input type="url" placeholder="4K" value={editEpisodeData?.videoUrl4k ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, videoUrl4k: e.target.value } : d)} className="w-24 border rounded p-2" />
-                                      <div className="mt-4">
-                                        <label className="block text-sm font-medium text-black mb-2">Subtitles</label>
-                                        <SubtitleManager
-                                          value={editEpisodeData?.subtitle_urls || {}}
-                                          onChange={(value) => {
-                                            setEditEpisodeData(d => d ? {
-                                              ...d,
-                                              subtitle_urls: value
-                                            } : d);
-                                          }}
-                                          disabled={isLoading}
-                                        />
-                                      </div>
-                                    </div>
-                                  </td>
-                                  <td className="py-2">
-                                    <Button onClick={() => saveEditEpisode(episode)} disabled={isLoading} className="bg-red-600 hover:bg-red-700 text-white mr-1">Save</Button>
-                                    <Button onClick={cancelEditEpisode} disabled={isLoading} className="bg-gray-200 hover:bg-gray-300 text-black">Cancel</Button>
-                                  </td>
-                                </tr>
-                              ) : (
+                        {(season.episodes || []).sort((a, b) => a.episodeNumber - b.episodeNumber).map((episode) => (
                                 <tr key={episode.id} className="border-b hover:bg-gray-50">
                                   <td className="py-2">{episode.episodeNumber}</td>
                             <td className="py-2">{episode.title}</td>
@@ -582,7 +628,6 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                               </div>
                             </td>
                           </tr>
-                              )
                         ))}
                       </tbody>
                     </table>
@@ -594,18 +639,50 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
         )}
       </div>
 
-      {/* Add Episode Modal */}
-      {isAddingEpisode && selectedSeason && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <h4 className="text-lg font-semibold mb-4">
-              Add New Episode to Season {selectedSeason.seasonNumber}
+      {/* Add/Edit Episode Modal */}
+      {(isAddingEpisode || editingEpisodeId) && selectedSeason && (
+        <div className="fixed inset-0 bg-gradient-to-b from-black/70 to-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-gradient-to-b from-white to-gray-50/80 rounded-xl p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-100/50 animate-in slide-in-from-bottom-4 duration-300">
+            <div className="flex justify-between items-center mb-8">
+              <div>
+                <h4 className="text-2xl font-semibold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent tracking-tight">
+                  {editingEpisodeId ? 'Edit Episode' : 'Add New Episode'}
             </h4>
+                <p className="text-sm text-gray-500 mt-1.5 flex items-center gap-2">
+                  <span className="px-2.5 py-1 bg-gradient-to-r from-gray-100 to-gray-50 rounded-full text-xs font-medium text-gray-600 shadow-sm border border-gray-200/50">
+                    Season {selectedSeason.seasonNumber}
+                  </span>
+                  <span className="text-gray-400">•</span>
+                  <span>{selectedSeason.title}</span>
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  setIsAddingEpisode(false);
+                  setSelectedSeason(null);
+                  setEditingEpisodeId(null);
+                  setEditEpisodeData(null);
+                }}
+                className="text-gray-500 hover:text-gray-700 hover:bg-gray-100/80 rounded-full transition-colors"
+              >
+                <X size={20} />
+              </Button>
+            </div>
             
-            <form onSubmit={handleAddEpisode} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form onSubmit={editingEpisodeId ? handleEditEpisode : handleAddEpisode} className="space-y-8">
+              {/* Basic Information Section */}
+              <div className="bg-gradient-to-b from-gray-50/90 to-gray-50/70 rounded-xl p-6 space-y-6 border border-gray-200/80 shadow-sm hover:shadow-md transition-all duration-200">
+                <h5 className="text-lg font-medium bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent flex items-center gap-2">
+                  <span>Basic Information</span>
+                  <span className="text-xs text-gray-500 bg-gradient-to-r from-gray-100 to-gray-50 px-2.5 py-1 rounded-full shadow-sm border border-gray-200/50">Required fields are marked with *</span>
+                </h5>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-2">
-                  <label htmlFor="episodeNumber">Episode Number*</label>
+                    <label htmlFor="episodeNumber" className="block text-sm font-medium text-gray-700">
+                      Episode Number*
+                    </label>
                   <Input
                     id="episodeNumber"
                     name="episodeNumber"
@@ -613,28 +690,36 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                     min="1"
                     required
                     disabled={isLoading}
-                    className="text-black"
+                      defaultValue={editEpisodeData?.episodeNumber}
+                      className="w-full bg-white/80 backdrop-blur-sm border-gray-200 focus:border-red-500 focus:ring-red-500/20 transition-all duration-200 shadow-sm hover:shadow"
+                      placeholder="e.g., 1"
                   />
                   {validationErrors.episodeNumber && (
-                    <p className="text-sm text-red-500">{validationErrors.episodeNumber}</p>
+                      <p className="text-sm text-red-500 mt-1">{validationErrors.episodeNumber}</p>
                   )}
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="title">Title*</label>
+                    <label htmlFor="title" className="block text-sm font-medium text-gray-700">
+                      Title*
+                    </label>
                   <Input
                     id="title"
                     name="title"
                     type="text"
                     required
                     disabled={isLoading}
-                    className="text-black"
+                      defaultValue={editEpisodeData?.title}
+                      className="w-full bg-white/80 backdrop-blur-sm border-gray-200 focus:border-red-500 focus:ring-red-500/20 transition-all duration-200 shadow-sm hover:shadow"
+                      placeholder="Enter episode title"
                   />
                   {validationErrors.title && (
-                    <p className="text-sm text-red-500">{validationErrors.title}</p>
+                      <p className="text-sm text-red-500 mt-1">{validationErrors.title}</p>
                   )}
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="duration">Duration*</label>
+                    <label htmlFor="duration" className="block text-sm font-medium text-gray-700">
+                      Duration*
+                    </label>
                   <Input
                     id="duration"
                     name="duration"
@@ -642,44 +727,174 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                     placeholder="e.g., 45m"
                     required
                     disabled={isLoading}
-                    className="text-black"
+                      defaultValue={editEpisodeData?.duration}
+                      className="w-full bg-white/80 backdrop-blur-sm border-gray-200 focus:border-red-500 focus:ring-red-500/20 transition-all duration-200 shadow-sm hover:shadow"
                   />
                   {validationErrors.duration && (
-                    <p className="text-sm text-red-500">{validationErrors.duration}</p>
+                      <p className="text-sm text-red-500 mt-1">{validationErrors.duration}</p>
                   )}
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <h5 className="font-medium">Video Quality URLs</h5>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {videoQualities.map(quality => (
-                    <div key={quality} className="space-y-2">
-                      <label htmlFor={`videoUrl${quality}`}>{quality} URL</label>
+              {/* Video Quality URLs Section */}
+              <div className="bg-gradient-to-b from-gray-50/90 to-gray-50/70 rounded-xl p-6 space-y-6 border border-gray-200/80 shadow-sm hover:shadow-md transition-all duration-200">
+                <div className="flex items-center justify-between">
+                  <h5 className="text-lg font-medium bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">Video Quality URLs</h5>
+                  <p className="text-sm text-gray-500 bg-gradient-to-r from-gray-100 to-gray-50 px-2.5 py-1 rounded-full shadow-sm border border-gray-200/50">At least one video URL is required</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label htmlFor="master_url" className="block text-sm font-medium text-gray-700">
+                        Master URL
+                      </label>
                       <Input
-                        id={`videoUrl${quality}`}
-                        name={`videoUrl${quality}`}
+                        id="master_url"
+                        name="master_url"
                         type="url"
-                        placeholder={`https://example.com/video_${quality}.mp4`}
+                        placeholder="https://example.com/video_master_url.mp4"
                         disabled={isLoading}
-                        className="text-black"
+                        defaultValue={editEpisodeData?.master_url}
+                        className="w-full bg-white/80 backdrop-blur-sm border-gray-200 focus:border-red-500 focus:ring-red-500/20 transition-all duration-200 shadow-sm hover:shadow"
                       />
-                      {validationErrors[`videoUrl${quality}`] && (
-                        <p className="text-sm text-red-500">
-                          {validationErrors[`videoUrl${quality}`]}
-                        </p>
-                      )}
+                      <p className="text-xs text-gray-500 mt-1">Highest quality source file</p>
                     </div>
-                  ))}
+                    <div className="space-y-2">
+                      <label htmlFor="master_url_480p" className="block text-sm font-medium text-gray-700">
+                        Master URL 480p
+                      </label>
+                      <Input
+                        id="master_url_480p"
+                        name="master_url_480p"
+                        type="url"
+                        placeholder="https://example.com/video_master_url_480p.mp4"
+                        disabled={isLoading}
+                        defaultValue={editEpisodeData?.master_url_480p}
+                        className="w-full bg-white/80 backdrop-blur-sm border-gray-200 focus:border-red-500 focus:ring-red-500/20 transition-all duration-200 shadow-sm hover:shadow"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="master_url_720p" className="block text-sm font-medium text-gray-700">
+                        Master URL 720p
+                      </label>
+                      <Input
+                        id="master_url_720p"
+                        name="master_url_720p"
+                        type="url"
+                        placeholder="https://example.com/video_master_url_720p.mp4"
+                        disabled={isLoading}
+                        defaultValue={editEpisodeData?.master_url_720p}
+                        className="w-full bg-white/80 backdrop-blur-sm border-gray-200 focus:border-red-500 focus:ring-red-500/20 transition-all duration-200 shadow-sm hover:shadow"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="master_url_1080p" className="block text-sm font-medium text-gray-700">
+                        Master URL 1080p
+                      </label>
+                      <Input
+                        id="master_url_1080p"
+                        name="master_url_1080p"
+                        type="url"
+                        placeholder="https://example.com/video_master_url_1080p.mp4"
+                        disabled={isLoading}
+                        defaultValue={editEpisodeData?.master_url_1080p}
+                        className="w-full bg-white/80 backdrop-blur-sm border-gray-200 focus:border-red-500 focus:ring-red-500/20 transition-all duration-200 shadow-sm hover:shadow"
+                      />
+                    </div>
+                  </div>
+              <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label htmlFor="videoUrl480p" className="block text-sm font-medium text-gray-700">
+                        480p URL
+                      </label>
+                      <Input
+                        id="videoUrl480p"
+                        name="videoUrl480p"
+                        type="url"
+                        placeholder="https://example.com/video_480p.mp4"
+                        disabled={isLoading}
+                        defaultValue={editEpisodeData?.videoUrl480p}
+                        className="w-full bg-white/80 backdrop-blur-sm border-gray-200 focus:border-red-500 focus:ring-red-500/20 transition-all duration-200 shadow-sm hover:shadow"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Standard definition</p>
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="videoUrl720p" className="block text-sm font-medium text-gray-700">
+                        720p URL
+                      </label>
+                      <Input
+                        id="videoUrl720p"
+                        name="videoUrl720p"
+                        type="url"
+                        placeholder="https://example.com/video_720p.mp4"
+                        disabled={isLoading}
+                        defaultValue={editEpisodeData?.videoUrl720p}
+                        className="w-full bg-white/80 backdrop-blur-sm border-gray-200 focus:border-red-500 focus:ring-red-500/20 transition-all duration-200 shadow-sm hover:shadow"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">HD quality</p>
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="videoUrl1080p" className="block text-sm font-medium text-gray-700">
+                        1080p URL
+                      </label>
+                      <Input
+                        id="videoUrl1080p"
+                        name="videoUrl1080p"
+                        type="url"
+                        placeholder="https://example.com/video_1080p.mp4"
+                        disabled={isLoading}
+                        defaultValue={editEpisodeData?.videoUrl1080p}
+                        className="w-full bg-white/80 backdrop-blur-sm border-gray-200 focus:border-red-500 focus:ring-red-500/20 transition-all duration-200 shadow-sm hover:shadow"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Full HD quality</p>
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="videoUrl4k" className="block text-sm font-medium text-gray-700">
+                        4K URL
+                      </label>
+                      <Input
+                        id="videoUrl4k"
+                        name="videoUrl4k"
+                        type="url"
+                        placeholder="https://example.com/video_4k.mp4"
+                        disabled={isLoading}
+                        defaultValue={editEpisodeData?.videoUrl4k}
+                        className="w-full bg-white/80 backdrop-blur-sm border-gray-200 focus:border-red-500 focus:ring-red-500/20 transition-all duration-200 shadow-sm hover:shadow"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Ultra HD quality</p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Subtitle URLs */}
-              <div className="space-y-4">
-                <h5 className="font-medium">Subtitles</h5>
+              {/* Subtitles Section */}
+              <div className="bg-gradient-to-b from-gray-50/90 to-gray-50/70 rounded-xl p-6 space-y-6 border border-gray-200/80 shadow-sm hover:shadow-md transition-all duration-200">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h5 className="text-lg font-medium bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">Subtitles</h5>
+                    <p className="text-sm text-gray-500 mt-1">Add subtitles in different languages</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="default"
+                    onClick={() => {
+                      const form = document.querySelector('form');
+                      const subtitleUrlsInput = form?.elements.namedItem('subtitle_urls') as HTMLTextAreaElement;
+                      if (subtitleUrlsInput) {
+                        subtitleUrlsInput.value = JSON.stringify({}, null, 2);
+                      }
+                    }}
+                    className="text-sm bg-white/80 backdrop-blur-sm border-gray-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-200 flex items-center gap-1.5 px-3 py-1.5 rounded-lg shadow-sm hover:shadow"
+                  >
+                    <Trash2 size={14} className="text-gray-500 group-hover:text-red-500" />
+                    Clear All
+                  </Button>
+                </div>
                 <div className="space-y-4">
                   <SubtitleManager
-                    value={{}}
+                    value={editEpisodeData?.subtitle_urls || {}}
                     onChange={(value) => {
                       const form = document.querySelector('form');
                       const subtitleUrlsInput = form?.elements.namedItem('subtitle_urls') as HTMLTextAreaElement;
@@ -693,7 +908,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                     id="subtitle_urls"
                     name="subtitle_urls"
                     className="hidden"
-                    defaultValue="{}"
+                    defaultValue={JSON.stringify(editEpisodeData?.subtitle_urls || {}, null, 2)}
                   />
                 </div>
               </div>
@@ -705,6 +920,8 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                   onClick={() => {
                     setIsAddingEpisode(false);
                     setSelectedSeason(null);
+                    setEditingEpisodeId(null);
+                    setEditEpisodeData(null);
                   }}
                   disabled={isLoading}
                   className="text-black bg-white hover:bg-gray-100"
@@ -716,7 +933,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                   disabled={isLoading} 
                   className="bg-red-600 hover:bg-red-700 text-white"
                 >
-                  {isLoading ? <Loader2 className="animate-spin" /> : 'Add Episode'}
+                  {isLoading ? <Loader2 className="animate-spin" /> : editingEpisodeId ? 'Save Changes' : 'Add Episode'}
                 </Button>
               </div>
             </form>
