@@ -69,7 +69,7 @@ const ContentTable = ({ contents, onEdit, onDelete, onView, isLoading = false }:
             placeholder="Search content..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-netflix-red focus:border-transparent"
+            className="pl-10 pr-4 py-2 w-full text-black border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-netflix-red focus:border-transparent"
             disabled={isLoading}
           />
         </div>
