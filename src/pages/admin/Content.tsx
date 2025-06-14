@@ -446,16 +446,16 @@ const ContentManagement = () => {
                 </div>
 
                 {/* Video Quality URLs */}
-                <div className="space-y-4">
+                  <div className="space-y-4">
                   <h5 className="font-medium">Video Quality URLs</h5>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {videoQualities.map(quality => (
                       <div key={quality.name} className="space-y-2">
                         <label htmlFor={quality.name} className="block text-sm font-medium text-gray-700">{quality.label}</label>
-                        <input
+                          <input
                           id={quality.name}
                           name={quality.name}
-                          type="url"
+                            type="url"
                           placeholder={`https://example.com/video_${quality.name}.mp4`}
                           defaultValue={selectedContent?.[quality.name] as string | undefined}
                           disabled={isLoading}
@@ -466,10 +466,10 @@ const ContentManagement = () => {
                             {validationErrors[quality.name]}
                           </p>
                         )}
-                      </div>
-                    ))}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
 
                 {/* Subtitle URLs */}
                 <div className="space-y-4">
