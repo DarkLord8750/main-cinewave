@@ -5,6 +5,7 @@ import { useGenreStore } from '../../stores/genreStore';
 import SeriesManager from '../../components/admin/SeriesManager';
 import ContentTable from '../../components/admin/ContentTable';
 import { SubtitleManager } from '../../components/admin/SubtitleManager';
+import { Button } from '../../components/ui/button';
 
 interface CastMember {
   id: string;
@@ -93,7 +94,8 @@ const ContentManagement = () => {
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [showSeriesManager, setShowSeriesManager] = useState(false);
-  const [cast, setCast] = useState<CastMember[]>([]);
+  const [castMembers, setCastMembers] = useState<CastMember[]>([]);
+  const [subtitleUrls, setSubtitleUrls] = useState<{ [key: string]: string }>({});
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -119,9 +121,9 @@ const ContentManagement = () => {
 
   useEffect(() => {
     if (selectedContent) {
-      setCast(selectedContent.cast || []);
+      setCastMembers(selectedContent.cast || []);
     } else {
-      setCast([]);
+      setCastMembers([]);
     }
   }, [selectedContent, isModalOpen]);
 
@@ -158,6 +160,7 @@ const ContentManagement = () => {
     setModalMode('add-movie');
     setIsModalOpen(true);
     setValidationErrors({});
+    setSubtitleUrls({});
   };
 
   const handleAddSeries = () => {
@@ -166,6 +169,7 @@ const ContentManagement = () => {
     setModalMode('add-series');
     setIsModalOpen(true);
     setValidationErrors({});
+    setSubtitleUrls({});
   };
 
   const handleEdit = (content: Content) => {
@@ -174,6 +178,7 @@ const ContentManagement = () => {
     setModalMode('edit');
     setIsModalOpen(true);
     setValidationErrors({});
+    setSubtitleUrls(content.subtitle_urls || {});
   };
 
   const handleView = (id: string) => {
@@ -197,15 +202,15 @@ const ContentManagement = () => {
   };
 
   const handleAddCast = () => {
-    setCast([...cast, { id: Date.now().toString(), name: '', role: '', photoUrl: '' }]);
+    setCastMembers([...castMembers, { id: Date.now().toString(), name: '', role: '', photoUrl: '' }]);
   };
 
   const handleRemoveCast = (id: string) => {
-    setCast(cast.filter(member => member.id !== id));
+    setCastMembers(castMembers.filter(member => member.id !== id));
   };
 
   const handleCastChange = (id: string, field: keyof CastMember, value: string) => {
-    setCast(cast.map(member => member.id === id ? { ...member, [field]: value } : member));
+    setCastMembers(castMembers.map(member => member.id === id ? { ...member, [field]: value } : member));
   };
 
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -250,6 +255,18 @@ const ContentManagement = () => {
                  modalMode === 'add-series' ? 'series' as const :
                  selectedContent?.type || 'movie' as const;
 
+    // Parse subtitle URLs from the form
+    let subtitleUrls = {};
+    try {
+      const subtitleUrlsStr = formData.get('subtitle_urls') as string;
+      if (subtitleUrlsStr) {
+        subtitleUrls = JSON.parse(subtitleUrlsStr);
+      }
+    } catch (error) {
+      console.error('Error parsing subtitle URLs:', error);
+      subtitleUrls = {};
+    }
+
     const contentData = {
       title: formData.get('title') as string,
       description: formData.get('description') as string,
@@ -261,7 +278,8 @@ const ContentManagement = () => {
       trailerUrl: formData.get('trailerUrl') as string,
       featured: formData.get('featured') === 'on',
       genre: selectedGenres,
-      cast: cast.filter(member => member.name.trim() !== ''),
+      cast: castMembers.filter(member => member.name.trim() !== ''),
+      subtitle_urls: subtitleUrls,
       // Only include video URLs for movies
       ...(type === 'movie' ? {
         master_url: formData.get('master_url') as string || undefined,
@@ -271,12 +289,7 @@ const ContentManagement = () => {
         videoUrl480p: formData.get('videoUrl480p') as string || undefined,
         videoUrl720p: formData.get('videoUrl720p') as string || undefined,
         videoUrl1080p: formData.get('videoUrl1080p') as string || undefined,
-        videoUrl4k: formData.get('videoUrl4k') as string || undefined,
-        subtitle_urls: JSON.parse(formData.get('subtitle_urls') as string || '{}')
-      } : {}),
-      // Include subtitle URLs for series as well
-      ...(type === 'series' ? {
-        subtitle_urls: JSON.parse(formData.get('subtitle_urls') as string || '{}')
+        videoUrl4k: formData.get('videoUrl4k') as string || undefined
       } : {})
     };
 
@@ -499,21 +512,46 @@ const ContentManagement = () => {
                 )}
 
                 {/* Subtitles Section */}
-                <div className="bg-gray-50 p-6 rounded-lg space-y-6">
-                  <h3 className="text-xl font-semibold text-gray-900 border-b pb-3">Subtitles</h3>
+                <div className="bg-gradient-to-b from-gray-50/90 to-gray-50/70 rounded-xl p-6 space-y-6 border border-gray-200/80 shadow-sm hover:shadow-md transition-all duration-200">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h5 className="text-lg font-medium bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">Subtitles</h5>
+                      <p className="text-sm text-gray-500 mt-1">Add subtitles in different languages</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="default"
+                      onClick={() => {
+                        setSubtitleUrls({});
+                        const form = document.querySelector('form');
+                        const subtitleUrlsInput = form?.elements.namedItem('subtitle_urls') as HTMLTextAreaElement;
+                        if (subtitleUrlsInput) {
+                          subtitleUrlsInput.value = JSON.stringify({}, null, 2);
+                        }
+                      }}
+                      className="text-sm bg-white/80 backdrop-blur-sm border-gray-200 text-red hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-200 flex items-center gap-1.5 px-3 py-1.5 rounded-lg shadow-sm hover:shadow"
+                    >
+                      <Trash2 size={14} className="text-black group-hover:text-red-500" />
+                      Clear All
+                    </Button>
+                  </div>
+                  <div className="space-y-4">
                   <SubtitleManager
-                    value={selectedContent?.subtitle_urls || {}}
+                      value={modalMode === 'edit' ? selectedContent?.subtitle_urls || {} : subtitleUrls}
                     onChange={(value) => {
-                      if (selectedContent) {
+                        if (modalMode === 'edit' && selectedContent) {
                         setSelectedContent({
                           ...selectedContent,
                           subtitle_urls: value
                         });
+                        } else {
+                          setSubtitleUrls(value);
                       }
                       const form = document.querySelector('form');
                       const subtitleUrlsInput = form?.elements.namedItem('subtitle_urls') as HTMLTextAreaElement;
                       if (subtitleUrlsInput) {
-                        subtitleUrlsInput.value = JSON.stringify(value);
+                          subtitleUrlsInput.value = JSON.stringify(value, null, 2);
                       }
                     }}
                     disabled={isLoading}
@@ -522,8 +560,9 @@ const ContentManagement = () => {
                     id="subtitle_urls"
                     name="subtitle_urls"
                     className="hidden"
-                    defaultValue={JSON.stringify(selectedContent?.subtitle_urls || {})}
+                      defaultValue={JSON.stringify(modalMode === 'edit' ? selectedContent?.subtitle_urls || {} : subtitleUrls, null, 2)}
                   />
+                  </div>
                 </div>
 
                 {/* Genres Section */}
@@ -577,7 +616,7 @@ const ContentManagement = () => {
                 <div className="bg-gray-50 p-6 rounded-lg space-y-6">
                   <h3 className="text-xl font-semibold text-gray-900 border-b pb-3">Cast</h3>
                   <div className="space-y-4">
-                    {cast.map((member, idx) => (
+                    {castMembers.map((member) => (
                       <div key={member.id} className="grid grid-cols-12 gap-4 items-end bg-white p-4 rounded-lg shadow-sm">
                         <div className="col-span-4">
                           <label className="block text-sm font-medium text-gray-700">Name</label>
