@@ -24,6 +24,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
   const [selectedSeason, setSelectedSeason] = useState<Season | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [newEpisodeSubtitles, setNewEpisodeSubtitles] = useState<{ [key: string]: string }>({});
   const { addSeason, updateSeason, deleteSeason, addEpisode, updateEpisode, deleteEpisode } = useContentStore();
 
   // --- Inline editing state ---
@@ -188,7 +189,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
       videoUrl720p: (form.elements.namedItem('videoUrl720p') as HTMLInputElement)?.value || undefined,
       videoUrl1080p: (form.elements.namedItem('videoUrl1080p') as HTMLInputElement)?.value || undefined,
       videoUrl4k: (form.elements.namedItem('videoUrl4k') as HTMLInputElement)?.value || undefined,
-      subtitle_urls: JSON.parse((form.elements.namedItem('subtitle_urls') as HTMLTextAreaElement)?.value || '{}')
+      subtitle_urls: newEpisodeSubtitles
     };
     
     // Validate required fields
@@ -362,12 +363,6 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
     }
   };
 
-  const cancelEditEpisode = () => {
-    setEditingEpisodeId(null);
-    setEditEpisodeData(null);
-    setSelectedSeason(null);
-  };
-
   const handleDeleteSeason = async (seasonId: string) => {
     if (!confirm('Are you sure you want to delete this season and all its episodes?')) return;
     
@@ -465,7 +460,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                 id="description"
                 name="description"
                 className="text-black bg-white"
-                rows="3"
+                rows={3}
                 disabled={isLoading}
               />
             </div>
@@ -539,7 +534,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                         Season {season.seasonNumber}
                     </h4>
                       <div className="text-sm text-gray-600">
-                      {season.episodes.length} episode{season.episodes.length !== 1 ? 's' : ''}
+                      {(season.episodes ?? []).length} episode{(season.episodes ?? []).length !== 1 ? 's' : ''}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -890,6 +885,8 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                           ...editEpisodeData,
                           subtitle_urls: {}
                         });
+                      } else {
+                        setNewEpisodeSubtitles({});
                       }
                     }}
                     className="text-sm bg-white/80 backdrop-blur-sm border-gray-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-200 flex items-center gap-1.5 px-3 py-1.5 rounded-lg shadow-sm hover:shadow"
@@ -900,13 +897,15 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                 </div>
                 <div className="space-y-4">
                   <SubtitleManager
-                    value={editEpisodeData?.subtitle_urls || {}}
+                    value={editingEpisodeId ? editEpisodeData?.subtitle_urls || {} : newEpisodeSubtitles}
                     onChange={(value) => {
                       if (editingEpisodeId && editEpisodeData) {
                         setEditEpisodeData({
                           ...editEpisodeData,
                           subtitle_urls: value
                         });
+                      } else {
+                        setNewEpisodeSubtitles(value);
                       }
                       const form = document.querySelector('form');
                       const subtitleUrlsInput = form?.elements.namedItem('subtitle_urls') as HTMLTextAreaElement;
@@ -920,7 +919,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                     id="subtitle_urls"
                     name="subtitle_urls"
                     className="hidden"
-                    defaultValue={JSON.stringify(editEpisodeData?.subtitle_urls || {}, null, 2)}
+                    defaultValue={JSON.stringify(editingEpisodeId ? editEpisodeData?.subtitle_urls || {} : newEpisodeSubtitles, null, 2)}
                   />
                 </div>
               </div>
