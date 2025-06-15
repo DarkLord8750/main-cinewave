@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { Plus, X} from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 
@@ -39,10 +39,15 @@ export const SubtitleManager = ({ value, onChange, disabled = false }: SubtitleM
   const handleAddLanguage = (languageCode: string) => {
     if (!languageCode) return;
     if (value[languageCode]) return;
-    onChange({
+    
+    // Create a new value object with the new language
+    const newValue = {
       ...value,
       [languageCode]: ''
-    });
+    };
+    
+    // Call onChange with the new value
+    onChange(newValue);
   };
 
   const handleRemoveLanguage = (languageCode: string) => {
@@ -73,77 +78,73 @@ export const SubtitleManager = ({ value, onChange, disabled = false }: SubtitleM
     return language ? language.name : code;
   };
 
-  const getFlag = (code: string) => {
-    const language = commonLanguages.find(lang => lang.code === code);
-    return language ? language.flag : '🏳️';
-  };
-
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {commonLanguages.map(lang => (
+      {/* Common Languages */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-gray-900">Common Languages</label>
+        <div className="flex flex-wrap gap-2">
+          {commonLanguages.map((lang) => (
+            <Button
+              key={lang.code}
+              type="button"
+              variant="outline"
+              size="default"
+              onClick={() => handleAddLanguage(lang.code)}
+              disabled={disabled || Boolean(value[lang.code])}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg shadow-sm hover:shadow transition-all duration-200 ${
+                value[lang.code]
+                  ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
+                  : 'bg-white/80 backdrop-blur-sm border-gray-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200'
+              }`}
+            >
+              <span className="text-base">{lang.flag}</span>
+              <span className="text-gray-900">{lang.name}</span>
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {/* Custom Language */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-gray-900">Custom Language</label>
+        <div className="flex gap-2">
+          <Input
+            type="text"
+            value={customLanguage}
+            onChange={(e) => setCustomLanguage(e.target.value)}
+            placeholder="Enter language code (e.g., fr, de, it)"
+            disabled={disabled}
+            className="flex-1 bg-white/80 backdrop-blur-sm border-gray-200 focus:border-red-500 focus:ring-red-500/20 transition-all duration-200 shadow-sm hover:shadow"
+          />
           <Button
-            key={lang.code}
             type="button"
             variant="outline"
-            size="sm"
-            onClick={() => handleAddLanguage(lang.code)}
-            disabled={disabled || !!value[lang.code]}
-            className="text-sm bg-white/80 backdrop-blur-sm border-gray-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-200 flex items-center gap-1"
-            title={lang.name}
-          >
-            <span>{lang.flag}</span> {lang.name}
-          </Button>
-        ))}
-      </div>
-
-      <div className="flex gap-2 items-center">
-        <Input
-          type="text"
-          placeholder="Custom language code (e.g., 'ar' for Arabic)"
-          value={customLanguage}
-          onChange={(e) => setCustomLanguage(e.target.value.toLowerCase())}
-          disabled={disabled}
-          className="flex-1 bg-white/80 backdrop-blur-sm border-gray-200 focus:border-red-500 focus:ring-red-500/20 transition-all duration-200"
-        />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            if (customLanguage) {
+            size="default"
+            onClick={() => {
               handleAddLanguage(customLanguage);
               setCustomLanguage('');
-            }
-          }}
-          disabled={disabled || !customLanguage}
-          className="text-sm bg-white/80 backdrop-blur-sm border-gray-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-200"
-          title={customLanguage ? `Add ${customLanguage}` : ''}
-        >
-          <Plus size={16} /> Add
-        </Button>
+            }}
+            disabled={disabled || !customLanguage}
+            className="text-gray-900 bg-white/80 backdrop-blur-sm border-gray-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-200 flex items-center gap-1.5 px-3 py-1.5 rounded-lg shadow-sm hover:shadow"
+          >
+            <Plus size={14} className="text-gray-900" />
+            Add
+          </Button>
+        </div>
       </div>
 
-      <div className="border-t pt-4 mt-2">
-        <div className="mb-2 text-sm font-semibold text-gray-700 flex items-center gap-2">
-          <span>Added Subtitles</span>
-        </div>
-        {Object.keys(value).length === 0 && (
-          <div className="text-gray-400 text-sm italic">No subtitles added yet. Select a language above to add.</div>
-        )}
-        <div className="space-y-3">
-          {Object.entries(value).map(([code, url]) => {
-            const isCommon = !!commonLanguages.find(l => l.code === code);
-            const valid = isValidUrl(url);
-            return (
-              <div key={code} className={`flex gap-2 items-center rounded-lg p-2 ${valid ? 'bg-green-50' : url ? 'bg-red-50' : 'bg-gray-50'}`}>
+      {/* Added Subtitles */}
+      {Object.keys(value).length > 0 && (
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-900">Added Subtitles</label>
+          <div className="space-y-2">
+            {Object.entries(value).map(([code, url]) => (
+              <div key={code} className="flex items-center gap-2">
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-lg" title={getLanguageName(code)}>{isCommon ? getFlag(code) : '🏳️'}</span>
-                    <span className="text-sm font-medium text-gray-700" title={isCommon ? '' : getLanguageName(code)}>{getLanguageName(code)}</span>
-                    <span className="text-xs text-gray-500">({code})</span>
-                    {valid && <CheckCircle size={16} className="text-green-500 ml-1" title="Valid URL" />}
-                    {!valid && url && <AlertCircle size={16} className="text-red-500 ml-1" title="Invalid URL" />}
+                    <span className="text-gray-900 font-medium">{getLanguageName(code)}</span>
+                    <span className="text-gray-500 text-sm">({code})</span>
                   </div>
                   <Input
                     type="url"
@@ -151,28 +152,29 @@ export const SubtitleManager = ({ value, onChange, disabled = false }: SubtitleM
                     onChange={(e) => handleUrlChange(code, e.target.value)}
                     placeholder="Enter subtitle URL"
                     disabled={disabled}
-                    className={`mt-1 bg-white/80 backdrop-blur-sm border-gray-200 focus:border-red-500 focus:ring-red-500/20 transition-all duration-200 ${!valid && url ? 'border-red-400' : ''}`}
+                    className={`mt-1 w-full bg-white/80 backdrop-blur-sm border-gray-200 focus:border-red-500 focus:ring-red-500/20 transition-all duration-200 shadow-sm hover:shadow ${
+                      urlErrors[code] ? 'border-red-500' : ''
+                    }`}
                   />
-                  {!valid && url && (
-                    <div className="text-xs text-red-500 mt-1">Please enter a valid URL (http:// or https://)</div>
+                  {urlErrors[code] && (
+                    <p className="text-red-500 text-sm mt-1">Invalid URL format</p>
                   )}
                 </div>
                 <Button
                   type="button"
-                  variant="ghost"
-                  size="sm"
+                  variant="outline"
+                  size="default"
                   onClick={() => handleRemoveLanguage(code)}
                   disabled={disabled}
-                  className="text-gray-500 hover:text-red-600 hover:bg-red-50"
-                  title={`Remove ${getLanguageName(code)}`}
+                  className="text-gray-900 bg-white/80 backdrop-blur-sm border-gray-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-200 flex items-center gap-1.5 px-3 py-1.5 rounded-lg shadow-sm hover:shadow"
                 >
-                  <X size={16} />
+                  <X size={14} className="text-gray-900" />
                 </Button>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }; 
