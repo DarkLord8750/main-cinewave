@@ -327,190 +327,115 @@ const VideoPlayer = ({
   const initialTouchXRef = useRef<number>(0);
   const initialTimeRef = useRef<number>(0);
 
-  const handleProgressTouchStartWithHold = (e: React.TouchEvent<HTMLDivElement>) => {
-    e.stopPropagation();
-    e.preventDefault();
-    if (!progressRef.current || !videoRef.current) return;
-
-    const touch = e.touches[0];
-    const rect = progressRef.current.getBoundingClientRect();
-    if (touch.clientY < rect.top || touch.clientY > rect.bottom) return;
-
-    // Calculate initial position and time
-    const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
-    const initialTime = percent * videoRef.current.duration;
-    
-    // Update refs with initial values
-    initialTouchXRef.current = touch.clientX;
-    initialTimeRef.current = initialTime;
-    touchStartTimeRef.current = Date.now();
-
-    // Set initial state for hold-to-seek
-    setIsHoldingToSeek(true);
-    setDragProgress(initialTime);
-    
-    // Clear any existing timeout to prevent conflicts
-    if (holdTimeoutRef.current) {
-      clearTimeout(holdTimeoutRef.current);
-    }
-
-    // Set a shorter timeout for hold detection
-    holdTimeoutRef.current = setTimeout(() => {
-      setIsHolding(true);
-      setIsTouchSeeking(true);
-      setIsSmoothSeeking(true);
-      wasPlayingBeforeTouch.current = !videoRef.current?.paused;
-      
-      if (videoRef.current) {
-        if (wasPlayingBeforeTouch.current) {
-          videoRef.current.pause();
-        }
-        setIsBuffering(true);
-      }
-    }, 150); // Reduced delay for better responsiveness
-  };
-
-  const handleProgressTouchMoveWithHold = (e: React.TouchEvent<HTMLDivElement>) => {
-    e.stopPropagation();
-    e.preventDefault();
-    
-    if (!progressRef.current || !videoRef.current) return;
-    
-    const touch = e.touches[0];
-    const rect = progressRef.current.getBoundingClientRect();
-    const clientX = touch.clientX;
-    
-    // Calculate new position directly without state updates
-    const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    const newTime = percent * videoRef.current.duration;
-    const xPos = clientX - rect.left;
-    
-    // Check if we should switch to hold mode
-    if (!isHolding && isHoldingToSeek) {
-      const touchDuration = Date.now() - touchStartTimeRef.current;
-      const touchDistance = Math.abs(clientX - initialTouchXRef.current);
-      
-      // If significant movement or time has passed, trigger hold mode
-      if (touchDuration > 50 || touchDistance > 3) {  // Reduced thresholds
-        // Clear any existing timeout to prevent multiple triggers
-        if (holdTimeoutRef.current) {
-          clearTimeout(holdTimeoutRef.current);
-          holdTimeoutRef.current = undefined;
-        }
-        
-        // Batch state updates
-        requestAnimationFrame(() => {
-          setIsHolding(true);
-          setIsTouchSeeking(true);
-          setIsSmoothSeeking(true);
-          wasPlayingBeforeTouch.current = !videoRef.current?.paused;
-          
-          if (wasPlayingBeforeTouch.current) {
-            videoRef.current?.pause();
-          }
-          setIsBuffering(true);
-        });
-      }
-    }
-    
-    // Update position if we're in hold mode or just started touching
-    if (isHolding || isHoldingToSeek) {
-      // Update ref immediately for responsive feel
-      dragProgressRef.current = newTime;
-      
-      // Batch UI updates in a single animation frame
-      if (!seekAnimationRef.current) {
-        seekAnimationRef.current = requestAnimationFrame(() => {
-          setDragProgress(newTime);
-          setHoverPosition({ 
-            time: newTime, 
-            x: xPos
-          });
-          seekAnimationRef.current = undefined;
-        });
-      }
-    }
-  };
-
-  const handleProgressTouchEndWithHold = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
-    e.stopPropagation();
-    e.preventDefault();
-    
-    // Clear any pending timeout
-    if (holdTimeoutRef.current) {
-      clearTimeout(holdTimeoutRef.current);
-      holdTimeoutRef.current = undefined;
-    }
-    
-    if (!videoRef.current || !progressRef.current) {
-      resetTouchState();
+  // New simplified touch handlers for smooth mobile seeking
+  const handleTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    // Only handle touches on the progress bar itself
+    if (!progressRef.current?.contains(e.target as Node) || !videoRef.current) {
       return;
     }
-
-    const wasHolding = isHolding;
-    const wasHoldingToSeek = isHoldingToSeek;
-    // Use ref value for final time to avoid state sync issues
-    const finalTime = dragProgressRef.current !== undefined ? 
-                     dragProgressRef.current : 
-                     videoRef.current.currentTime;
-
-    // Always apply the final seek position
-    if (wasHoldingToSeek) {
-      // Batch all state updates together
-      requestAnimationFrame(() => {
-        videoRef.current!.currentTime = finalTime;
-        setCurrentTime(finalTime);
-        
-        // Resume playback if it was playing before and not user-paused
-        if (wasPlayingBeforeTouch.current && !userPaused) {
-          videoRef.current!.play().catch((error) => {
-            console.error('Error resuming playback:', error);
-            setIsBuffering(false);
-            setIsPlaying(false);
-          });
-        } else {
-          setIsBuffering(false);
-        }
-      });
-    }
     
-    // Clean up animation frame before resetting state
-    if (seekAnimationRef.current) {
-      cancelAnimationFrame(seekAnimationRef.current);
-      seekAnimationRef.current = undefined;
-    }
+    e.stopPropagation();
+    e.preventDefault();
     
-    // Reset all states
-    resetTouchState();
-  }, [isHolding, isHoldingToSeek, dragProgress, userPaused]);
-
-  // Handle touch cancel (when touch is interrupted)
-  const handleProgressTouchCancel = useCallback(() => {
-    // Clear any pending timeout
-    if (holdTimeoutRef.current) {
-      clearTimeout(holdTimeoutRef.current);
-      holdTimeoutRef.current = undefined;
-    }
+    const touch = e.touches[0];
+    const rect = progressRef.current.getBoundingClientRect();
+    const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
     
-    // Reset all states
-    resetTouchState();
+    // Store initial touch state
+    wasPlayingBeforeTouch.current = !videoRef.current.paused;
+    initialTouchXRef.current = touch.clientX;
+    initialTimeRef.current = videoRef.current.currentTime;
     
-    // Clean up animation frame
-    if (seekAnimationRef.current) {
-      cancelAnimationFrame(seekAnimationRef.current);
-      seekAnimationRef.current = undefined;
+    // Set initial drag state
+    setDragProgress(percent * videoRef.current.duration);
+    setIsTouchSeeking(true);
+    
+    // Pause video during seek for better performance
+    if (wasPlayingBeforeTouch.current) {
+      videoRef.current.pause();
     }
   }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    // Only handle moves if we're actively seeking and on the progress bar
+    if (!progressRef.current || !videoRef.current || !isTouchSeeking) {
+      return;
+    }
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const touch = e.touches[0];
+    const rect = progressRef.current.getBoundingClientRect();
+    // Ensure touch is within the progress bar bounds
+    const clientX = Math.max(rect.left, Math.min(touch.clientX, rect.right));
+    const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const newTime = percent * videoRef.current.duration;
+    
+    // Update drag preview
+    setDragProgress(newTime);
+    
+    // Update hover position for tooltip
+    setHoverPosition({
+      x: clientX - rect.left,
+      time: newTime
+    });
+  }, [isTouchSeeking]);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    // Only handle end if we were seeking
+    if (!videoRef.current || !isTouchSeeking) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // If this was a tap (not a drag), seek to that position
+    if (dragProgress === null && progressRef.current) {
+      const touch = e.changedTouches[0];
+      const rect = progressRef.current.getBoundingClientRect();
+      const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+      const newTime = percent * videoRef.current.duration;
+      videoRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+    } else if (dragProgress !== null) {
+      // Seek to final position if we were dragging
+      videoRef.current.currentTime = dragProgress;
+      setCurrentTime(dragProgress);
+    }
+    
+    // Resume playback if it was playing
+    if (wasPlayingBeforeTouch.current) {
+      videoRef.current.play().catch(console.error);
+    }
+    
+    // Clean up
+    setDragProgress(null);
+    setIsTouchSeeking(false);
+    setHoverPosition(null);
+  }, [isTouchSeeking, dragProgress]);
   
-  // Helper function to reset touch-related states
+  // Clean up event listeners on unmount
+  useEffect(() => {
+    return () => {
+      if (seekAnimationRef.current) {
+        cancelAnimationFrame(seekAnimationRef.current);
+      }
+      if (holdTimeoutRef.current) {
+        clearTimeout(holdTimeoutRef.current);
+      }
+    };
+  }, []);
+  
+  // Reset touch state helper
   const resetTouchState = useCallback(() => {
-    setIsHoldingToSeek(false);
     setIsHolding(false);
+    setIsHoldingToSeek(false);
     setIsTouchSeeking(false);
     setIsSmoothSeeking(false);
     setDragProgress(null);
     setHoverPosition(null);
     setIsBuffering(false);
+    wasPlayingBeforeTouch.current = false;
   }, []);
 
   // Progress bar handlers moved to where they are used
@@ -1328,58 +1253,7 @@ const VideoPlayer = ({
     setCurrentTime(newTime);
   };
 
-  // Add mobile touch handlers
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (isTouchingControls) return;
-    
-    const touch = e.touches[0];
-    const currentX = touch.clientX;
-    const currentY = touch.clientY;
-    
-    if (touchStartX === null || touchStartY === null) return;
-    
-    const deltaX = currentX - touchStartX;
-    const deltaY = currentY - touchStartY;
-    
-    // Horizontal swipe for seeking
-    if (Math.abs(deltaX) > 10 && videoRef.current) {
-      const seekAmount = (deltaX / window.innerWidth) * videoRef.current.duration;
-      const newTime = Math.max(0, Math.min(videoRef.current.duration, videoRef.current.currentTime + seekAmount));
-      videoRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
-    }
-    
-    // Vertical swipe for volume
-    if (Math.abs(deltaY) > 10 && videoRef.current) {
-      const volumeChange = -deltaY / window.innerHeight;
-      const newVolume = Math.max(0, Math.min(1, volume + volumeChange));
-      videoRef.current.volume = newVolume;
-      setVolume(newVolume);
-      setIsMuted(newVolume === 0);
-    }
-  }, [isTouchingControls, touchStartX, touchStartY, volume]);
-
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (e.touches.length !== 1) return;
-    
-    const touch = e.touches[0];
-    setTouchStartX(touch.clientX);
-    setTouchStartY(touch.clientY);
-    
-    // Check if touch is on controls
-    const target = e.target as HTMLElement;
-    const isControlElement = target.closest('.video-controls') !== null;
-    
-    if (isControlElement) {
-      setIsTouchingControls(true);
-    }
-  }, []);
-
-  const handleTouchEnd = useCallback(() => {
-    setTouchStartX(null);
-    setTouchStartY(null);
-      setIsTouchingControls(false);
-  }, []);
+  // Touch handlers for the progress bar are defined at the top of the component
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -2078,11 +1952,11 @@ const VideoPlayer = ({
                     onMouseDown={handleProgressMouseDown}
                     onMouseMove={handleProgressHover}
                     onMouseLeave={handleProgressLeave}
-                    onTouchStart={handleProgressTouchStartWithHold}
-                    onTouchMove={handleProgressTouchMoveWithHold}
-                    onTouchEnd={handleProgressTouchEndWithHold}
-                    onTouchCancel={handleProgressTouchCancel}
-                    style={{ touchAction: 'none' }}
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    onTouchCancel={handleTouchEnd}
+                    style={{ touchAction: 'pan-x' }}
                   >
                     <div
                       className="h-full bg-red-600 rounded-full relative transition-all duration-100"
