@@ -173,6 +173,20 @@ class SubtitleManager {
   }
 }
 
+// Utility function to format time
+const formatTime = (seconds: number): string => {
+  if (isNaN(seconds) || seconds < 0) return "0:00";
+  
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  return `${minutes}:${secs.toString().padStart(2, '0')}`;
+};
+
 const VideoPlayer = ({
   title,
   masterUrl,
@@ -273,6 +287,7 @@ const VideoPlayer = ({
   const lastUpdateTimeRef = useRef(0);
   const RAF_ID = useRef<number>();
   const seekTimeoutRef = useRef<NodeJS.Timeout>();
+  const wasPlayingBeforeTouch = useRef<boolean>(false);
 
   // Add state for orientation
   const [isLandscape, setIsLandscape] = useState(window.innerWidth > window.innerHeight);
@@ -321,110 +336,203 @@ const VideoPlayer = ({
     const rect = progressRef.current.getBoundingClientRect();
     if (touch.clientY < rect.top || touch.clientY > rect.bottom) return;
 
+    // Calculate initial position and time
+    const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+    const initialTime = percent * videoRef.current.duration;
+    
+    // Update refs with initial values
     initialTouchXRef.current = touch.clientX;
-    initialTimeRef.current = videoRef.current.currentTime;
+    initialTimeRef.current = initialTime;
     touchStartTimeRef.current = Date.now();
 
-    // Immediately set isHoldingToSeek and pause the video
+    // Set initial state for hold-to-seek
     setIsHoldingToSeek(true);
-    setIsHolding(true); // Set isHolding immediately
-    setIsTouchSeeking(true); // Set isTouchSeeking immediately
-    setIsSmoothSeeking(true); // Set isSmoothSeeking immediately
-    videoRef.current.pause();
-    setIsBuffering(true);
-
-
+    setDragProgress(initialTime);
+    
     // Clear any existing timeout to prevent conflicts
     if (holdTimeoutRef.current) {
       clearTimeout(holdTimeoutRef.current);
     }
-    // The setTimeout for setting isHolding, isTouchSeeking, isSmoothSeeking is no longer needed
-    // as these are set immediately.
+
+    // Set a shorter timeout for hold detection
+    holdTimeoutRef.current = setTimeout(() => {
+      setIsHolding(true);
+      setIsTouchSeeking(true);
+      setIsSmoothSeeking(true);
+      wasPlayingBeforeTouch.current = !videoRef.current?.paused;
+      
+      if (videoRef.current) {
+        if (wasPlayingBeforeTouch.current) {
+          videoRef.current.pause();
+        }
+        setIsBuffering(true);
+      }
+    }, 150); // Reduced delay for better responsiveness
   };
 
   const handleProgressTouchMoveWithHold = (e: React.TouchEvent<HTMLDivElement>) => {
     e.stopPropagation();
     e.preventDefault();
+    
     if (!progressRef.current || !videoRef.current) return;
-
+    
     const touch = e.touches[0];
     const rect = progressRef.current.getBoundingClientRect();
-    if (touch.clientY < rect.top || touch.clientY > rect.bottom) return;
-
-    // The following block is no longer needed as isHolding is set immediately on touch start
-    // if (!isHolding && isHoldingToSeek) { // Only allow dragging if hold-to-seek is active
-    //   const touchDuration = Date.now() - touchStartTimeRef.current;
-    //   const touchDistance = Math.abs(touch.clientX - initialTouchXRef.current);
-    //   if (touchDuration > 300 || touchDistance > 20) {
-    //     setIsHolding(true);
-    //     setIsTouchSeeking(true);
-    //     setIsSmoothSeeking(true);
-    //     // videoRef.current.pause(); // Already paused in touch start
-    //     // setIsBuffering(true); // Already buffering in touch start
-    //   }
-    // }
-
-    if (isHolding) {
-      const percent = (touch.clientX - rect.left) / rect.width;
-      console.log('Move: clientX', touch.clientX, 'rect.left', rect.left, 'rect.width', rect.width, 'percent', percent);
-
-      const newTime = Math.max(0, Math.min(videoRef.current.duration, percent * videoRef.current.duration));
-      setDragProgress(newTime);
-      setHoverPosition({ time: newTime, x: touch.clientX - rect.left });
-      console.log('Move: newTime', newTime, 'dragProgress', newTime);
-
-
+    const clientX = touch.clientX;
+    
+    // Calculate new position directly without state updates
+    const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const newTime = percent * videoRef.current.duration;
+    const xPos = clientX - rect.left;
+    
+    // Check if we should switch to hold mode
+    if (!isHolding && isHoldingToSeek) {
+      const touchDuration = Date.now() - touchStartTimeRef.current;
+      const touchDistance = Math.abs(clientX - initialTouchXRef.current);
+      
+      // If significant movement or time has passed, trigger hold mode
+      if (touchDuration > 50 || touchDistance > 3) {  // Reduced thresholds
+        // Clear any existing timeout to prevent multiple triggers
+        if (holdTimeoutRef.current) {
+          clearTimeout(holdTimeoutRef.current);
+          holdTimeoutRef.current = undefined;
+        }
+        
+        // Batch state updates
+        requestAnimationFrame(() => {
+          setIsHolding(true);
+          setIsTouchSeeking(true);
+          setIsSmoothSeeking(true);
+          wasPlayingBeforeTouch.current = !videoRef.current?.paused;
+          
+          if (wasPlayingBeforeTouch.current) {
+            videoRef.current?.pause();
+          }
+          setIsBuffering(true);
+        });
+      }
+    }
+    
+    // Update position if we're in hold mode or just started touching
+    if (isHolding || isHoldingToSeek) {
+      // Update ref immediately for responsive feel
+      dragProgressRef.current = newTime;
+      
+      // Batch UI updates in a single animation frame
+      if (!seekAnimationRef.current) {
+        seekAnimationRef.current = requestAnimationFrame(() => {
+          setDragProgress(newTime);
+          setHoverPosition({ 
+            time: newTime, 
+            x: xPos
+          });
+          seekAnimationRef.current = undefined;
+        });
+      }
     }
   };
 
   const handleProgressTouchEndWithHold = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
     e.stopPropagation();
     e.preventDefault();
-    if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
-    if (!videoRef.current) return;
+    
+    // Clear any pending timeout
+    if (holdTimeoutRef.current) {
+      clearTimeout(holdTimeoutRef.current);
+      holdTimeoutRef.current = undefined;
+    }
+    
+    if (!videoRef.current || !progressRef.current) {
+      resetTouchState();
+      return;
+    }
 
-    // Always reset isHoldingToSeek on touch end
-    setIsHoldingToSeek(false);
+    const wasHolding = isHolding;
+    const wasHoldingToSeek = isHoldingToSeek;
+    // Use ref value for final time to avoid state sync issues
+    const finalTime = dragProgressRef.current !== undefined ? 
+                     dragProgressRef.current : 
+                     videoRef.current.currentTime;
 
-    if (isHolding) {
-      setIsHolding(false);
-      setIsTouchSeeking(false);
-      setIsSmoothSeeking(false);
-      if (videoRef.current) {
-        console.log('End: dragProgress', dragProgress);
-        videoRef.current.currentTime = dragProgress ?? videoRef.current.currentTime;
-        setCurrentTime(videoRef.current.currentTime);
-        if (!userPaused) { // Only play if not user-paused
-          const playPromise = videoRef.current.play();
-          if (playPromise !== undefined) {
-            playPromise.then(() => {
-              setIsPlaying(true);
-              setIsBuffering(false);
-            }).catch(() => {
-              setIsBuffering(false);
-              setIsPlaying(false);
-            });
-          }
+    // Always apply the final seek position
+    if (wasHoldingToSeek) {
+      // Batch all state updates together
+      requestAnimationFrame(() => {
+        videoRef.current!.currentTime = finalTime;
+        setCurrentTime(finalTime);
+        
+        // Resume playback if it was playing before and not user-paused
+        if (wasPlayingBeforeTouch.current && !userPaused) {
+          videoRef.current!.play().catch((error) => {
+            console.error('Error resuming playback:', error);
+            setIsBuffering(false);
+            setIsPlaying(false);
+          });
         } else {
-      console.log('End: Quick tap detected');
           setIsBuffering(false);
         }
-      }
-      setDragProgress(null);
-      setHoverPosition(null);
-      if (seekAnimationRef.current) cancelAnimationFrame(seekAnimationRef.current);
-    } else {
-      // Quick tap: seek to position
-      const rect = progressRef.current?.getBoundingClientRect();
-      if (rect) {
-        const touch = e.changedTouches[0];
-        const percent = (touch.clientX - rect.left) / rect.width;
-        const newTime = Math.max(0, Math.min(videoRef.current.duration, percent * videoRef.current.duration));
-        videoRef.current.currentTime = newTime;
-        setCurrentTime(newTime);
-      }
+      });
     }
-  }, [isHolding]);
+    
+    // Clean up animation frame before resetting state
+    if (seekAnimationRef.current) {
+      cancelAnimationFrame(seekAnimationRef.current);
+      seekAnimationRef.current = undefined;
+    }
+    
+    // Reset all states
+    resetTouchState();
+  }, [isHolding, isHoldingToSeek, dragProgress, userPaused]);
+
+  // Handle touch cancel (when touch is interrupted)
+  const handleProgressTouchCancel = useCallback(() => {
+    // Clear any pending timeout
+    if (holdTimeoutRef.current) {
+      clearTimeout(holdTimeoutRef.current);
+      holdTimeoutRef.current = undefined;
+    }
+    
+    // Reset all states
+    resetTouchState();
+    
+    // Clean up animation frame
+    if (seekAnimationRef.current) {
+      cancelAnimationFrame(seekAnimationRef.current);
+      seekAnimationRef.current = undefined;
+    }
+  }, []);
+  
+  // Helper function to reset touch-related states
+  const resetTouchState = useCallback(() => {
+    setIsHoldingToSeek(false);
+    setIsHolding(false);
+    setIsTouchSeeking(false);
+    setIsSmoothSeeking(false);
+    setDragProgress(null);
+    setHoverPosition(null);
+    setIsBuffering(false);
+  }, []);
+
+  // Progress bar handlers moved to where they are used
+
+
+  // Quality and audio handlers
+
+
+  // Toggle fullscreen function
+  const toggleFullscreen = useCallback(() => {
+    if (!containerRef.current) return;
+    
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().then(() => {
+        setIsFullscreen(true);
+      }).catch(console.error);
+    } else {
+      document.exitFullscreen().then(() => {
+        setIsFullscreen(false);
+      }).catch(console.error);
+    }
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -756,20 +864,21 @@ const VideoPlayer = ({
     if (!videoRef.current) return;
     
     const currentTime = videoRef.current.currentTime;
+    const videoDuration = videoRef.current.duration || 1; // Avoid division by zero
+    
     setCurrentTime(currentTime);
     savedPositionRef.current = currentTime;
 
-    // Check if video is completed (90-95% of duration)
-    const completed = currentTime >= videoRef.current.duration * 0.9;
+    // Only consider video completed if we're at the very end (last 1%)
+    const isAtEnd = currentTime >= videoDuration * 0.99;
     
-    if (completed) {
-      // If completed, reset to beginning
-      videoRef.current.currentTime = 0;
-      setCurrentTime(0);
-      updateWatchHistory(0, true);
-      console.log("Video completed, resetting to start");
-        } else {
-      updateWatchHistory(currentTime, false);
+    // Update watch history with current time
+    updateWatchHistory(currentTime, isAtEnd);
+    
+    // If we're at the end, pause the video but don't reset the time
+    if (isAtEnd) {
+      videoRef.current.pause();
+      setIsPlaying(false);
     }
   }, [updateWatchHistory]);
 
@@ -964,27 +1073,6 @@ const VideoPlayer = ({
     };
   }, [currentProfile?.id, contentId, getWatchTime]);
 
-  // Function to handle fullscreen
-  const toggleFullscreen = () => {
-    if (!containerRef.current) return;
-
-    if (!document.fullscreenElement) {
-      if (containerRef.current.requestFullscreen) {
-        containerRef.current.requestFullscreen();
-      } else if ((containerRef.current as any).webkitRequestFullscreen) {
-        (containerRef.current as any).webkitRequestFullscreen();
-      }
-      setIsFullscreen(true);
-      } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      } else if ((document as any).webkitExitFullscreen) {
-        (document as any).webkitExitFullscreen();
-      }
-      setIsFullscreen(false);
-    }
-  };
-
   // Player Controls
   const togglePlay = useCallback(() => {
     if (!videoRef.current) return;
@@ -1052,19 +1140,23 @@ const VideoPlayer = ({
     }
   };
 
-  const toggleMute = () => {
+  const toggleMute = useCallback(() => {
     if (!videoRef.current) return;
 
     if (isMuted) {
-      videoRef.current.volume = volume || 1;
+      // When unmuting, restore to previous volume or default to 1 if volume is 0
+      const newVolume = volume > 0 ? volume : 1;
+      videoRef.current.volume = newVolume;
       videoRef.current.muted = false;
       setIsMuted(false);
+      setVolume(newVolume);
     } else {
+      // When muting, set volume to 0 and update state
       videoRef.current.volume = 0;
       videoRef.current.muted = true;
       setIsMuted(true);
     }
-  };
+  }, [isMuted, volume]);
 
   const handleQualityChange = (quality: string) => {
     if (!hlsInstance || isQualityChanging) return;
@@ -1978,46 +2070,51 @@ const VideoPlayer = ({
       {showControls && (
         <>
           {/* Progress bar with time */}
-          <div className="absolute bottom-16 left-0 right-0 px-4 z-10">
-            <div className="flex items-center space-x-2">
+          <div className="absolute bottom-16 left-0 right-0 z-10">
+            <div className="flex items-center space-x-2 px-4">
               <div className="flex-1 relative group">
-              <div
-                ref={progressRef}
-                className="h-1.5 bg-gray-600/50 rounded-full cursor-pointer relative group"
-                onMouseDown={handleProgressMouseDown}
-                onMouseMove={handleProgressHover}
-                onMouseLeave={handleProgressLeave}
-                onTouchStart={handleProgressTouchStartWithHold}
-                onTouchMove={handleProgressTouchMoveWithHold}
-                onTouchEnd={handleProgressTouchEndWithHold}
-              >
-                <div
-                    className="h-full bg-red-600 rounded-full relative transition-all duration-100"
-                  style={{
-                      width: `${((dragProgress ?? currentTime) / duration) * 100}%`,
-                    }}
+                {/* Added padding container for better touch targets */}
+                <div className="py-3 -my-3 px-4 -mx-4" style={{ margin: '0 -1rem', padding: '0.75rem 1rem' }}>
+                  <div
+                    ref={progressRef}
+                    className="h-1.5 bg-gray-600/50 rounded-full cursor-pointer relative group"
+                    onMouseDown={handleProgressMouseDown}
+                    onMouseMove={handleProgressHover}
+                    onMouseLeave={handleProgressLeave}
+                    onTouchStart={handleProgressTouchStartWithHold}
+                    onTouchMove={handleProgressTouchMoveWithHold}
+                    onTouchEnd={handleProgressTouchEndWithHold}
+                    onTouchCancel={handleProgressTouchCancel}
+                    style={{ touchAction: 'none' }}
                   >
-                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 transform scale-100 group-hover:scale-110" />
-                  </div>
-                  {((hoverPosition && !isDraggingRef.current) || isHoldingToSeek) ? (
                     <div
-                      className="absolute top-0 h-full w-1 bg-white opacity-50 transition-opacity duration-200"
-                      style={{ left: `${hoverPosition?.x}px` }}
-                    />
-                  ) : null}
-              </div>
-                {((hoverPosition && !isDraggingRef.current) || isHoldingToSeek) ? (
+                      className="h-full bg-red-600 rounded-full relative transition-all duration-100"
+                      style={{
+                        width: `${((dragProgress ?? currentTime) / duration) * 100}%`,
+                      }}
+                    >
+                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 transform scale-100 group-hover:scale-110" />
+                    </div>
+                    {((hoverPosition && !isDraggingRef.current) || isHoldingToSeek) && (
+                      <div
+                        className="absolute top-0 h-full w-1 bg-white opacity-50 transition-opacity duration-200"
+                        style={{ left: `${hoverPosition?.x}px` }}
+                      />
+                    )}
+                  </div>
+                </div>
+                {((hoverPosition && !isDraggingRef.current) || isHoldingToSeek) && (
                   <div
                     className="absolute bottom-full left-0 transform -translate-x-1/2 mb-2 px-2 py-1 text-white text-sm pointer-events-none"
                     style={{ left: `${hoverPosition?.x}px` }}
                   >
                     {formatTime(hoverPosition?.time || 0)}
-            </div>
-                ) : null}
+                  </div>
+                )}
               </div>
               <div className="text-white text-sm min-w-[100px]">
-              {formatTime(currentTime)} / {formatTime(duration)}
-            </div>
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </div>
             </div>
           </div>
 
