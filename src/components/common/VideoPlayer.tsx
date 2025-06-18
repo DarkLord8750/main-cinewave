@@ -875,11 +875,8 @@ const VideoPlayer = ({
     // Update watch history with current time
     updateWatchHistory(currentTime, isAtEnd);
     
-    // If we're at the end, pause the video but don't reset the time
-    if (isAtEnd) {
-      videoRef.current.pause();
-      setIsPlaying(false);
-    }
+    // Don't pause the video automatically, let it play to the end
+    // The ended event will handle the completion
   }, [updateWatchHistory]);
 
   // Update handleLoadedMetadata to check for completed videos
