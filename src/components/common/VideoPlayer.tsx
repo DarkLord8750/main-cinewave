@@ -244,19 +244,6 @@ const VideoPlayer = ({
   const [currentAudioTrack, setCurrentAudioTrack] = useState<string>('default');
   const [showAudioMenu, setShowAudioMenu] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [showSpinner, setShowSpinner] = useState(false);
-
-  // Debounce spinner visibility
-  useEffect(() => {
-    let spinnerTimeout: NodeJS.Timeout;
-    if (isBuffering || isLoading) {
-      spinnerTimeout = setTimeout(() => setShowSpinner(true), 100); // Show spinner after 100ms delay
-    } else {
-      clearTimeout(spinnerTimeout);
-      setShowSpinner(false);
-    }
-    return () => clearTimeout(spinnerTimeout);
-  }, [isBuffering, isLoading]);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [availableQualities, setAvailableQualities] = useState<VideoQuality[]>([]);
   const [isQualityChanging, setIsQualityChanging] = useState(false);
@@ -273,7 +260,6 @@ const VideoPlayer = ({
     textColor: '#FFFFFF',
     backgroundOpacity: 0.5
   });
-  const [buffered, setBuffered] = useState<TimeRanges | null>(null);
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
@@ -508,62 +494,55 @@ const VideoPlayer = ({
         setHlsInstance(null);
       }
 
-      // Set initial loading state
-      setIsLoading(true);
-      setIsBuffering(true);
-
       // Initialize HLS if the browser supports it
       if (masterUrl && typeof Hls !== "undefined" && Hls.isSupported()) {
         try {
           const hls = new Hls({
-            // Ultra-fast startup settings - minimal buffering
-            maxBufferLength: 30, // Increased buffer for smoother playback
-            maxMaxBufferLength: 60, // Increased max buffer
-            maxBufferSize: 60 * 1000 * 1000, // 60MB buffer - allows more segments to download
-            maxBufferHole: 0.5, // Increased tolerance for smoother playback
-            lowLatencyMode: true, // Enable for faster startup
-            backBufferLength: 10, // Minimal back buffer
+            // Optimize buffer settings for better performance
+            maxBufferLength: 30, // Increased for smoother playback
+            maxMaxBufferLength: 60, // Increased for better buffering
+            maxBufferSize: 60 * 1000 * 1000, // 60MB buffer
+            maxBufferHole: 0.5, // Increased tolerance for gaps
+            lowLatencyMode: true,
+            backBufferLength: 90, // Increased for better seeking
             
-            // Ultra-fast loading settings
-            manifestLoadingTimeOut: 5000, // Very short timeout
-            manifestLoadingMaxRetry: 1, // Single retry only
-            manifestLoadingRetryDelay: 200, // Very fast retry
-            levelLoadingTimeOut: 5000, // Very short timeout
-            levelLoadingMaxRetry: 1, // Single retry only
-            levelLoadingRetryDelay: 200, // Very fast retry
-            fragLoadingTimeOut: 5000, // Very short timeout
-            fragLoadingMaxRetry: 1, // Single retry only
-            fragLoadingRetryDelay: 200, // Very fast retry
+            // Optimize loading settings
+            manifestLoadingTimeOut: 20000,
+            manifestLoadingMaxRetry: 4,
+            manifestLoadingRetryDelay: 1000,
+            levelLoadingTimeOut: 20000,
+            levelLoadingMaxRetry: 4,
+            levelLoadingRetryDelay: 1000,
+            fragLoadingTimeOut: 20000,
+            fragLoadingMaxRetry: 4,
+            fragLoadingRetryDelay: 1000,
             
-            // Instant playback settings
-            startLevel: 0, // Always start with lowest quality
-            abrEwmaDefaultEstimate: 1000000, // More realistic initial estimate for ABR
-            testBandwidth: true, // Enable bandwidth testing for better ABR decisions
+            // Optimize playback settings
+            startLevel: -1, // Auto quality selection
+            abrEwmaDefaultEstimate: 500000, // 500 kbps
+            testBandwidth: true,
             progressive: true,
             enableWorker: true,
             startFragPrefetch: true,
             
-            // Minimal buffering settings
-            maxFragLookUpTolerance: 0.05, // Minimal tolerance
-            maxStarvationDelay: 1, // Very short starvation delay
-            maxLoadingDelay: 1, // Very short loading delay
+            // Advanced buffering settings
+            maxFragLookUpTolerance: 0.5,
+            maxStarvationDelay: 4,
+            maxLoadingDelay: 4,
             minAutoBitrate: 0,
-            highBufferWatchdogPeriod: 2, // Less frequent checks to allow more buffering
-            nudgeMaxRetry: 1, // Single retry
-            nudgeOffset: 0.01, // Tiny offset
+            highBufferWatchdogPeriod: 2,
+            nudgeMaxRetry: 5,
+            nudgeOffset: 0.1,
             
-            // Instant startup specific settings
-            liveSyncDurationCount: 1, // Minimal sync
-            liveMaxLatencyDurationCount: 2, // Minimal latency
-            maxLiveSyncPlaybackRate: 1.5, // Faster catchup
-            
-            // Aggressive network settings
+            // Optimize network settings
             xhrSetup: function(xhr: XMLHttpRequest, url: string) {
               xhr.withCredentials = false;
-              xhr.timeout = 3000; // Very short timeout
-              // Disable caching for faster loading
-              xhr.setRequestHeader('Cache-Control', 'no-cache');
-              xhr.setRequestHeader('Pragma', 'no-cache');
+              // Add cache-busting parameter
+              if (url.indexOf('?') === -1) {
+                url += '?_=' + Date.now();
+              } else {
+                url += '&_=' + Date.now();
+              }
             }
           });
 
@@ -590,109 +569,67 @@ const VideoPlayer = ({
             }
           });
 
-          // Ultra-fast buffering event handlers - minimal delays
-          let bufferingTimeout: NodeJS.Timeout;
-          let isInitialLoad = true;
-          let hasStartedPlaying = false;
-          
-          const setBufferingInstant = (buffering: boolean, forceDelay: number = 0) => {
-
-          video.addEventListener('progress', () => {
-            setBuffered(video.buffered);
-          });
-            if (bufferingTimeout) clearTimeout(bufferingTimeout);
-            
-            // During initial load, minimize buffering indicators
-            if (isInitialLoad && buffering && !forceDelay) {
-              return; // Skip showing buffering during initial load
-            }
-            
-            if (buffering && forceDelay > 0) {
-              bufferingTimeout = setTimeout(() => setIsBuffering(true), forceDelay);
-            } else {
-              setIsBuffering(buffering);
-            }
-          };
-
-          // HLS events for instant startup
+          // Add buffering event handlers
           hls.on(Hls.Events.BUFFER_CREATED, () => {
-            setBufferingInstant(false);
-            setIsLoading(false);
+            console.log("Buffer created");
+            setIsBuffering(false);
           });
 
           hls.on(Hls.Events.BUFFER_APPENDED, () => {
-            setBufferingInstant(false);
-            setIsLoading(false);
+            console.log("Buffer appended");
+            setIsBuffering(false);
           });
 
           hls.on(Hls.Events.BUFFER_FLUSHED, () => {
-            // Only show buffering after initial playback has started
-            if (hasStartedPlaying) {
-              setBufferingInstant(true, 200); // Very short delay
-            }
-          });
-
-          // Ultra-fast video event listeners
-          video.addEventListener('loadstart', () => {
+            console.log("Buffer flushed");
             setIsBuffering(true);
-            setIsLoading(true);
-          });
-
-          video.addEventListener('loadedmetadata', () => {
-            setBufferingInstant(false);
-            setIsLoading(false);
-          });
-
-          video.addEventListener('loadeddata', () => {
-            setBufferingInstant(false);
-            setIsLoading(false);
-          });
-
-          video.addEventListener('canplay', () => {
-            setBufferingInstant(false);
-            setIsLoading(false);
-            
-            // Auto-play immediately when ready
-            if (autoPlay && !hasStartedPlaying) {
-              video.play().catch(console.error);
-            }
-          });
-
-          video.addEventListener('canplaythrough', () => {
-            setBufferingInstant(false);
-            setIsLoading(false);
-          });
-
-          video.addEventListener('playing', () => {
-            isInitialLoad = false;
-            hasStartedPlaying = true;
-            setBufferingInstant(false);
-            setIsLoading(false);
           });
 
           video.addEventListener('waiting', () => {
-            // Only show waiting after initial startup
-            if (hasStartedPlaying) {
-              setBufferingInstant(true, 100); // Very short delay
-            }
+            console.log('Video is waiting for data.');
+            setIsBuffering(true);
+          });
+
+          video.addEventListener('playing', () => {
+            console.log('Video is playing.');
+            setIsBuffering(false);
+          });
+
+          video.addEventListener('canplay', () => {
+            console.log('Video can play through to the end.');
+            setIsBuffering(false);
+          });
+
+          video.addEventListener('canplaythrough', () => {
+            console.log('Video can play through to the end without stopping.');
+            setIsBuffering(false);
           });
 
           video.addEventListener('stalled', () => {
-            if (hasStartedPlaying) {
-              setBufferingInstant(true, 200); // Short delay
-            }
+            console.log('Video is stalled.');
+            setIsBuffering(true);
           });
 
-          // Aggressive progress monitoring for instant startup
+          video.addEventListener('loadstart', () => {
+            console.log('Video load started.');
+            setIsBuffering(true);
+          });
+
+          video.addEventListener('loadeddata', () => {
+            console.log('Video loaded data.');
+            setIsBuffering(false);
+          });
+
+          video.addEventListener('loadedmetadata', () => {
+            console.log('Video loaded metadata.');
+            setIsBuffering(false);
+          });
+
           video.addEventListener('progress', () => {
-            if (video.readyState >= 2) {
-              setBufferingInstant(false);
-              setIsLoading(false);
-              
-              // Try to start playing if auto-play is enabled and not started yet
-              if (autoPlay && !hasStartedPlaying && video.paused) {
-                video.play().catch(console.error);
-              }
+            if (video.readyState < 3) {
+              setIsBuffering(true);
+            } else {
+              setIsBuffering(false);
             }
           });
 
@@ -751,8 +688,9 @@ const VideoPlayer = ({
           hls.attachMedia(video);
           hls.loadSource(masterUrl);
 
-          // Handle HLS events for instant startup
+          // Handle HLS events
           hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            console.log("HLS manifest parsed successfully");
           
             // Set available qualities
             if (hls.levels && hls.levels.length > 0) {
@@ -765,110 +703,26 @@ const VideoPlayer = ({
               ];
               setAvailableQualities(hlsQualities);
               
-              // Always start with lowest quality for instant startup
-              hls.currentLevel = 0;
-              setCurrentQuality("0");
-              initialQualitySet.current = true;
-              
-              // Switch to auto quality after just 1 second of playback
-              setTimeout(() => {
-                if (hls && !hls.destroyed && hasStartedPlaying) {
-                  hls.currentLevel = -1;
-                  setCurrentQuality("-1");
+              // Set initial quality
+              if (!initialQualitySet.current) {
+                hls.currentLevel = -1; // Start with auto
+                setCurrentQuality("-1");
+                initialQualitySet.current = true;
+              } else {
+                // Restore previous quality if set
+                const qualityLevel = parseInt(currentQuality);
+                if (!isNaN(qualityLevel)) {
+                  hls.currentLevel = qualityLevel;
                 }
-              }, 1000);
-            }
-            
-            // Force immediate playback attempt
-            if (autoPlay) {
-              // Multiple aggressive playback attempts
-              const attemptPlay = async () => {
-                try {
-                  await video.play();
-                } catch (error) {
-                  // Retry after minimal delay
-                  setTimeout(async () => {
-                    try {
-                      await video.play();
-                    } catch (retryError) {
-                      setPlayerError("Click to start video playback");
-                    }
-                  }, 50);
-                }
-              };
-              
-              // Immediate attempt
-              attemptPlay();
-              
-              // Also try when any data is available
-              if (video.readyState < 2) {
-                const playOnReady = () => {
-                  attemptPlay();
-                  video.removeEventListener('loadeddata', playOnReady);
-                };
-                video.addEventListener('loadeddata', playOnReady);
               }
             }
+            
+            // Start playback immediately
+            video.play().catch(error => {
+              console.error("Error playing video:", error);
+              setPlayerError("Failed to play video. Please try refreshing the page.");
+            });
           });
-
-          // Ultra-aggressive auto-play mechanism
-          const forceAutoPlay = () => {
-            if (!autoPlay || !video) return;
-            
-            let playAttempts = 0;
-            const maxAttempts = 5;
-            
-            const attemptPlay = async () => {
-              if (playAttempts >= maxAttempts || !video.paused) return;
-              
-              playAttempts++;
-              
-              try {
-                await video.play();
-                return;
-              } catch (error) {
-                if (playAttempts < maxAttempts) {
-                  // Try again with increasing delays
-                  setTimeout(attemptPlay, playAttempts * 100);
-                } else {
-                  setPlayerError("Click to start video playback");
-                }
-              }
-            };
-            
-            // Start attempting immediately
-            attemptPlay();
-          };
-
-          // Progressive buffer optimization - start with minimal buffer, then increase
-          let bufferOptimizationTimeout: NodeJS.Timeout;
-          
-          const optimizeBufferAfterStartup = () => {
-            if (hls && !hls.destroyed) {
-              // After 2 seconds of playback, increase buffer for smoother experience
-              bufferOptimizationTimeout = setTimeout(() => {
-                if (hls && !hls.destroyed) {
-                  // Update buffer settings for better streaming experience
-                  hls.config.maxBufferLength = 15;
-                  hls.config.maxMaxBufferLength = 30;
-                  hls.config.maxBufferSize = 30 * 1000 * 1000;
-                  console.log("Buffer settings optimized for streaming");
-                }
-              }, 2000);
-            }
-          };
-
-          // Start buffer optimization and auto-play after first play
-          video.addEventListener('playing', optimizeBufferAfterStartup, { once: true });
-          
-          // Multiple auto-play triggers
-          video.addEventListener('loadedmetadata', forceAutoPlay, { once: true });
-          video.addEventListener('canplay', forceAutoPlay, { once: true });
-          
-          // Immediate auto-play attempt
-          if (autoPlay) {
-            setTimeout(forceAutoPlay, 100);
-          }
 
           setHlsInstance(hls);
         } catch (error) {
@@ -1347,13 +1201,6 @@ const VideoPlayer = ({
       if (document.fullscreenElement) {
         await document.exitFullscreen();
       }
-      if (videoRef.current) {
-        videoRef.current.pause();
-      }
-      if (hlsInstance) {
-        hlsInstance.destroy();
-        setHlsInstance(null);
-      }
       if (onClose) {
         onClose();
       } else {
@@ -1568,16 +1415,16 @@ const VideoPlayer = ({
     }
   };
 
-  // Debug: Log current state (only when needed)
-  // console.log("Video Player State:", {
-  //   isPlaying,
-  //   isMuted,
-  //   volume,
-  //   currentTime,
-  //   duration,
-  //   isBuffering,
-  //   currentQuality,
-  // });
+  // Debug: Log current state
+  console.log("Video Player State:", {
+    isPlaying,
+    isMuted,
+    volume,
+    currentTime,
+    duration,
+    isBuffering,
+    currentQuality,
+  });
 
   // Update the audio track change handler
   const handleAudioTrackChange = (trackId: string) => {
@@ -1902,13 +1749,6 @@ const VideoPlayer = ({
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      onClick={() => {
-        // Fallback auto-play on any click
-        if (videoRef.current && videoRef.current.paused && autoPlay) {
-          videoRef.current.play().catch(console.error);
-          setPlayerError(null);
-        }
-      }}
     >
       {/* Add back button */}
               <button
@@ -1943,20 +1783,22 @@ const VideoPlayer = ({
       {/* Video element */}
       <video
         ref={videoRef}
-        className={`absolute inset-0 w-full h-full object-contain transition-all duration-300 z-0 ${
+        className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 min-w-full min-h-full w-auto h-auto object-contain transition-all duration-500 z-0 ${
           isQualityChanging ? 'opacity-50 scale-[0.98]' : 'opacity-100 scale-100'
         }`}
         onPlay={() => {
+          console.log("Video play event");
           setIsPlaying(true);
-          setIsBuffering(false);
-          setIsLoading(false);
         }}
         onPause={() => {
+          console.log("Video pause event");
           setIsPlaying(false);
         }}
         onLoadedMetadata={() => {
+          console.log("Video metadata loaded");
           if (videoRef.current && subtitleManagerRef.current) {
             const textTracks = Array.from(videoRef.current.textTracks);
+            console.log('Available text tracks after metadata:', textTracks);
             if (currentSubtitleTrack === 'off') {
               textTracks.forEach(track => track.mode = 'disabled');
             } else {
@@ -1965,43 +1807,14 @@ const VideoPlayer = ({
               });
             }
           }
-          // Try auto-play immediately when metadata is loaded
-          if (autoPlay && videoRef.current && videoRef.current.paused) {
-            videoRef.current.play().catch(console.error);
-          }
         }}
         playsInline
         muted={isMuted}
         tabIndex={0}
         aria-label="Video player"
-        preload="none"
+        preload="auto"
         controls={false}
         crossOrigin="anonymous"
-        autoPlay={autoPlay}
-        // Reduce rendering overhead
-        style={{
-          willChange: 'auto',
-          backfaceVisibility: 'hidden',
-          perspective: '1000px',
-          transform: 'translateZ(0)', // Force hardware acceleration
-          imageRendering: 'auto' // Fix: use valid value for type
-        }}
-        // Additional performance attributes
-        onLoadStart={() => {
-          if (autoPlay && videoRef.current) {
-            // Pre-emptive play attempt
-            setTimeout(() => {
-              if (videoRef.current && videoRef.current.paused) {
-                videoRef.current.play().catch(console.error);
-              }
-            }, 10);
-          }
-        }}
-        onCanPlay={() => {
-          if (autoPlay && videoRef.current && videoRef.current.paused) {
-            videoRef.current.play().catch(console.error);
-          }
-        }}
       >
         {masterUrl && (
           <source
@@ -2121,7 +1934,7 @@ const VideoPlayer = ({
             >
             <RotateCw size={32} />
             </button>
-          </div>
+            </div>
       </div>
 
       {/* Update the bottom controls layout */}
@@ -2145,22 +1958,6 @@ const VideoPlayer = ({
                     onTouchCancel={handleTouchEnd}
                     style={{ touchAction: 'pan-x' }}
                   >
-                    {buffered && duration > 0 && Array.from({ length: buffered.length }).map((_, i) => {
-                      const start = buffered.start(i);
-                      const end = buffered.end(i);
-                      const left = (start / duration) * 100;
-                      const width = ((end - start) / duration) * 100;
-                      return (
-                        <div
-                          key={i}
-                          className="absolute h-full bg-gray-400/50 rounded-full"
-                          style={{
-                            left: `${left}%`,
-                            width: `${width}%`,
-                          }}
-                        />
-                      );
-                    })}
                     <div
                       className="h-full bg-red-600 rounded-full relative transition-all duration-100"
                       style={{
@@ -2370,8 +2167,8 @@ const VideoPlayer = ({
       )}
 
       {/* Loading indicator */}
-      {showSpinner && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/50 pointer-events-none">
+      {isBuffering && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50">
           <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin" />
         </div>
       )}
