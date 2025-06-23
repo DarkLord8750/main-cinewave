@@ -1347,6 +1347,13 @@ const VideoPlayer = ({
       if (document.fullscreenElement) {
         await document.exitFullscreen();
       }
+      if (videoRef.current) {
+        videoRef.current.pause();
+      }
+      if (hlsInstance) {
+        hlsInstance.destroy();
+        setHlsInstance(null);
+      }
       if (onClose) {
         onClose();
       } else {
