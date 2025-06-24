@@ -329,7 +329,7 @@ export const useContentStore = create<ContentState>()(
 
       addContent: async (content: Omit<Content, 'id' | 'cast' | 'createdAt'>) => {
         try {
-          // Start a Supabase transaction
+          // Insert content
           const { data: newContent, error: contentError } = await supabase
             .from('content')
             .insert({
@@ -338,37 +338,24 @@ export const useContentStore = create<ContentState>()(
               type: content.type,
               release_year: content.releaseYear,
               maturity_rating: content.maturityRating,
+              duration: content.duration,
               poster_image: content.posterImage,
               backdrop_image: content.backdropImage,
               trailer_url: content.trailerUrl,
-              featured: content.featured,
-              subtitle_urls: content.subtitle_urls,
-              ...(content.type === 'movie' ? {
-                master_url: content.master_url,
-                master_url_480p: content.master_url_480p,
-                master_url_720p: content.master_url_720p,
-                master_url_1080p: content.master_url_1080p,
-                video_url_480p: content.videoUrl480p,
-                video_url_720p: content.videoUrl720p,
-                video_url_1080p: content.videoUrl1080p,
-                video_url_4k: content.videoUrl4k
-              } : {})
+              featured: content.featured
             })
             .select()
             .single();
-
           if (contentError) throw contentError;
-          if (!newContent) throw new Error('Failed to create content');
 
-          // Handle series-specific data
-          if (content.type === 'series' && content.seasons && content.seasons.length > 0) {
-            // Create series record
-            let { data: series, error: seriesError } = await supabase
+          // Always create a series row if content is a series
+          let seriesId = null;
+          if (content.type === 'series') {
+            const { data: series, error: seriesError } = await supabase
               .from('series')
               .insert({ content_id: newContent.id })
               .select('id')
               .single();
-
             if ((seriesError && (seriesError.code === '23505' || seriesError.code === 'PGRST116')) || !series) {
               // 23505 is unique_violation, PGRST116 is no rows returned
               const { data: existingSeries, error: fetchError } = await supabase
@@ -378,18 +365,23 @@ export const useContentStore = create<ContentState>()(
                 .single();
               if (fetchError) throw fetchError;
               if (!existingSeries) throw new Error('Series not found or could not be created.');
-              series = existingSeries;
+              seriesId = existingSeries.id;
             } else if (seriesError) {
               throw seriesError;
+            } else {
+              seriesId = series.id;
             }
+          }
 
+          // Handle series-specific data
+          if (content.type === 'series' && content.seasons && content.seasons.length > 0) {
             // Add seasons and episodes
             for (const season of content.seasons) {
               // Create season
               const { data: createdSeason, error: seasonError } = await supabase
                 .from('seasons')
                 .insert({
-                  series_id: series.id,
+                  series_id: seriesId,
                   season_number: season.seasonNumber
                 })
                 .select()
@@ -710,17 +702,17 @@ export const useContentStore = create<ContentState>()(
 
       addSeason: async (contentId: string, season: Omit<Season, 'id' | 'episodes'>) => {
         try {
-          const { data: newSeason, error } = await supabase.rpc('create_series_and_season', {
+          const { data: newSeason, error } = await supabase.rpc('create_season', {
             p_content_id: contentId,
-            p_description: season.description || null,
             p_season_number: season.seasonNumber,
-            p_title: season.title || `Season ${season.seasonNumber}`
+            p_title: season.title || `Season ${season.seasonNumber}`,
+            p_description: season.description || null
           });
           if (error) throw error;
           await get().fetchContents();
-          return { 
-            id: newSeason, 
-            seasonNumber: season.seasonNumber, 
+          return {
+            id: newSeason,
+            seasonNumber: season.seasonNumber,
             seriesId: contentId,
             episodes: [],
             title: season.title,
