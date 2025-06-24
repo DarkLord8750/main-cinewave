@@ -498,14 +498,15 @@ const VideoPlayer = ({
       if (masterUrl && typeof Hls !== "undefined" && Hls.isSupported()) {
         try {
           const hls = new Hls({
-            // Optimize buffer settings for better performance
-            maxBufferLength: 30, // Increased for smoother playback
-            maxMaxBufferLength: 60, // Increased for better buffering
-            maxBufferSize: 60 * 1000 * 1000, // 60MB buffer
-            maxBufferHole: 0.5, // Increased tolerance for gaps
+            // Further reduce buffer settings for even faster start
+            maxBufferLength: 5, // Lowered for quickest playback start
+            maxMaxBufferLength: 10, // Lowered for less initial buffering
+            maxBufferSize: 10 * 1000 * 1000, // 10MB buffer
+            maxBufferHole: 0.5,
             lowLatencyMode: true,
-            backBufferLength: 90, // Increased for better seeking
-            
+            backBufferLength: 30,
+            autoStartLoad: true,
+            startPosition: -1,
             // Optimize loading settings
             manifestLoadingTimeOut: 20000,
             manifestLoadingMaxRetry: 4,
@@ -571,62 +572,52 @@ const VideoPlayer = ({
 
           // Add buffering event handlers
           hls.on(Hls.Events.BUFFER_CREATED, () => {
-            console.log("Buffer created");
             setIsBuffering(false);
           });
 
           hls.on(Hls.Events.BUFFER_APPENDED, () => {
-            console.log("Buffer appended");
             setIsBuffering(false);
           });
 
           hls.on(Hls.Events.BUFFER_FLUSHED, () => {
-            console.log("Buffer flushed");
             setIsBuffering(true);
           });
 
           video.addEventListener('waiting', () => {
-            console.log('Video is waiting for data.');
-            setIsBuffering(true);
+            // Only set buffering if not enough data to play
+            if (video.readyState < 2) setIsBuffering(true);
           });
 
           video.addEventListener('playing', () => {
-            console.log('Video is playing.');
             setIsBuffering(false);
           });
 
           video.addEventListener('canplay', () => {
-            console.log('Video can play through to the end.');
             setIsBuffering(false);
           });
 
           video.addEventListener('canplaythrough', () => {
-            console.log('Video can play through to the end without stopping.');
             setIsBuffering(false);
           });
 
           video.addEventListener('stalled', () => {
-            console.log('Video is stalled.');
-            setIsBuffering(true);
+            if (video.readyState < 2) setIsBuffering(true);
           });
 
           video.addEventListener('loadstart', () => {
-            console.log('Video load started.');
             setIsBuffering(true);
           });
 
           video.addEventListener('loadeddata', () => {
-            console.log('Video loaded data.');
             setIsBuffering(false);
           });
 
           video.addEventListener('loadedmetadata', () => {
-            console.log('Video loaded metadata.');
             setIsBuffering(false);
           });
 
           video.addEventListener('progress', () => {
-            if (video.readyState < 3) {
+            if (video.readyState < 2) {
               setIsBuffering(true);
             } else {
               setIsBuffering(false);
@@ -1740,6 +1731,57 @@ const VideoPlayer = ({
     handleVolumeChange(newVolume * 100);
   }, []);
 
+  // Debounced buffering spinner logic
+  const bufferingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [showBufferingSpinner, setShowBufferingSpinner] = useState(false);
+
+  // Debounce spinner display: only show if buffering lasts > 300ms
+  useEffect(() => {
+    if (isBuffering) {
+      if (!bufferingTimeoutRef.current) {
+        bufferingTimeoutRef.current = setTimeout(() => {
+          setShowBufferingSpinner(true);
+        }, 300);
+      }
+    } else {
+      if (bufferingTimeoutRef.current) {
+        clearTimeout(bufferingTimeoutRef.current);
+        bufferingTimeoutRef.current = null;
+      }
+      setShowBufferingSpinner(false);
+    }
+    return () => {
+      if (bufferingTimeoutRef.current) {
+        clearTimeout(bufferingTimeoutRef.current);
+        bufferingTimeoutRef.current = null;
+      }
+    };
+  }, [isBuffering]);
+
+  // Add state for buffered ranges
+  const [bufferedRanges, setBufferedRanges] = useState<{start: number, end: number}[]>([]);
+
+  // Update buffered ranges on timeupdate and progress
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const updateBuffered = () => {
+      const ranges: {start: number, end: number}[] = [];
+      for (let i = 0; i < video.buffered.length; i++) {
+        ranges.push({ start: video.buffered.start(i), end: video.buffered.end(i) });
+      }
+      setBufferedRanges(ranges);
+    };
+    video.addEventListener('progress', updateBuffered);
+    video.addEventListener('timeupdate', updateBuffered);
+    video.addEventListener('loadedmetadata', updateBuffered);
+    return () => {
+      video.removeEventListener('progress', updateBuffered);
+      video.removeEventListener('timeupdate', updateBuffered);
+      video.removeEventListener('loadedmetadata', updateBuffered);
+    };
+  }, []);
+
   return (
     <div
       ref={containerRef}
@@ -1910,7 +1952,7 @@ const VideoPlayer = ({
       <div className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${
         showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
       }`}>
-        <div className="flex items-center space-x-8">
+        <div className="flex items-center space-x-8 z-20">
             <button
             onClick={() => seek(-10)}
             className="text-white hover:text-gray-300 transition-colors p-4 rounded-full hover:bg-white/10"
@@ -1948,7 +1990,7 @@ const VideoPlayer = ({
                 <div className="py-3 -my-3 px-4 -mx-4" style={{ margin: '0 -1rem', padding: '0.75rem 1rem' }}>
                   <div
                     ref={progressRef}
-                    className="h-1.5 bg-gray-600/50 rounded-full cursor-pointer relative group"
+                    className="relative w-full h-4 cursor-pointer group"
                     onMouseDown={handleProgressMouseDown}
                     onMouseMove={handleProgressHover}
                     onMouseLeave={handleProgressLeave}
@@ -1956,15 +1998,43 @@ const VideoPlayer = ({
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}
                     onTouchCancel={handleTouchEnd}
-                    style={{ touchAction: 'pan-x' }}
+                    style={{ touchAction: 'pan-x', minHeight: '1rem' }}
                   >
+                    {/* Background bar */}
+                    <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-800 rounded-full -translate-y-1/2" />
+                    {/* Buffered bar */}
+                    {bufferedRanges.map((range, idx) => (
+                      <div
+                        key={idx}
+                        className="absolute top-1/2 h-1 bg-[#e0e0e0]/90 rounded-full -translate-y-1/2"
+                        style={{
+                          left: `${(range.start / duration) * 100}%`,
+                          width: `${((range.end - range.start) / duration) * 100}%`,
+                          zIndex: 1,
+                        }}
+                      />
+                    ))}
+                    {/* Progress bar */}
                     <div
-                      className="h-full bg-red-600 rounded-full relative transition-all duration-100"
+                      className="absolute top-1/2 left-0 h-2 bg-red-600 rounded-full shadow-md -translate-y-1/2"
                       style={{
                         width: `${((dragProgress ?? currentTime) / duration) * 100}%`,
+                        zIndex: 2,
+                      }}
+                    />
+                    {/* Handle */}
+                    <div
+                      className="absolute top-1/2"
+                      style={{
+                        left: `calc(${((dragProgress ?? currentTime) / duration) * 100}% - 0.5rem)`,
+                        zIndex: 3
                       }}
                     >
-                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 transform scale-100 group-hover:scale-110" />
+                      <div
+                        className="w-4 h-4 bg-white border-2 border-red-600 rounded-full shadow-lg transition-transform duration-150 transform -translate-y-1/2 scale-90 group-hover:scale-110 group-focus:scale-110 focus:outline-none"
+                        tabIndex={0}
+                        aria-label="Seek handle"
+                      />
                     </div>
                     {((hoverPosition && !isDraggingRef.current) || isHoldingToSeek) && (
                       <div
@@ -2203,6 +2273,13 @@ const VideoPlayer = ({
               </span>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Loading indicator */}
+      {showBufferingSpinner && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50 pointer-events-none z-10">
+          <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin" />
         </div>
       )}
     </div>
