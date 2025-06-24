@@ -1068,6 +1068,11 @@ const VideoPlayer = ({
     }
   }, [isMuted, volume]);
 
+  // Ref to store resume time after quality/audio change
+  const resumeTimeRef = useRef<number | null>(null);
+  const resumeWasPlayingRef = useRef<boolean>(false);
+
+  // Update the quality change handler
   const handleQualityChange = (quality: string) => {
     if (!hlsInstance || isQualityChanging) return;
 
@@ -1082,26 +1087,21 @@ const VideoPlayer = ({
       const currentAudioTrackId = currentAudioTrack;
       const currentSubtitleId = subtitleManagerRef.current?.getCurrentTrack();
       
+      // Store resume info
+      resumeTimeRef.current = currentTime;
+      resumeWasPlayingRef.current = wasPlaying;
+      
       // Change quality
       const qualityLevel = parseInt(quality);
-      hlsInstance.currentLevel = qualityLevel;
+      if (quality === "-1") {
+        hlsInstance.currentLevel = -1; // AUTO mode
+        setCurrentAutoQuality("");
+      } else {
+        hlsInstance.currentLevel = qualityLevel; // Manual mode
+      }
       setCurrentQuality(quality);
       setShowQualityMenu(false);
       
-      if (quality === "-1") {
-        setCurrentAutoQuality("");
-      }
-      
-      // Restore playback state
-      video.currentTime = currentTime;
-        if (wasPlaying) {
-        video.play().catch(error => {
-          console.error("Error resuming playback after quality change:", error);
-          // If play fails, try to seek to the correct position
-          video.currentTime = currentTime;
-        });
-      }
-
       // Restore audio track
       if (currentAudioTrackId) {
         try {
@@ -1123,6 +1123,62 @@ const VideoPlayer = ({
       }, 500);
     }
   };
+
+  // Update the audio track change handler
+  const handleAudioTrackChange = (trackId: string) => {
+    if (!hlsInstance || isQualityChanging) return;
+    try {
+      setIsQualityChanging(true);
+      const video = videoRef.current;
+      if (!video) return;
+      // Save current state
+      const wasPlaying = !video.paused;
+      const currentTime = video.currentTime;
+      const currentSubtitleId = subtitleManagerRef.current?.getCurrentTrack();
+      // Store resume info
+      resumeTimeRef.current = currentTime;
+      resumeWasPlayingRef.current = wasPlaying;
+      // Change audio track
+      hlsInstance.audioTrack = parseInt(trackId);
+      setCurrentAudioTrack(trackId);
+      setShowAudioMenu(false);
+      // Restore subtitle track
+      if (currentSubtitleId && currentSubtitleId !== 'off' && subtitleManagerRef.current) {
+        subtitleManagerRef.current.setTrack(currentSubtitleId);
+      }
+    } catch (error) {
+      console.error('Error changing audio track:', error);
+    } finally {
+      setIsQualityChanging(false);
+    }
+  };
+
+  // Seek to resume time after quality/audio change
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    function tryResumePlayback() {
+      if (!video) return;
+      if (
+        resumeTimeRef.current !== null &&
+        Math.abs((video.currentTime || 0) - resumeTimeRef.current) > 0.5 &&
+        video.duration > resumeTimeRef.current
+      ) {
+        video.currentTime = resumeTimeRef.current;
+      }
+      if (resumeWasPlayingRef.current) {
+        video.play().catch(() => {});
+      }
+      resumeTimeRef.current = null;
+      resumeWasPlayingRef.current = false;
+    }
+    video.addEventListener('loadedmetadata', tryResumePlayback);
+    video.addEventListener('canplay', tryResumePlayback);
+    return () => {
+      video.removeEventListener('loadedmetadata', tryResumePlayback);
+      video.removeEventListener('canplay', tryResumePlayback);
+    };
+  }, []);
 
   // Show controls on any mouse move (global)
   useEffect(() => {
@@ -1414,46 +1470,6 @@ const VideoPlayer = ({
     currentQuality,
   });
 
-  // Update the audio track change handler
-  const handleAudioTrackChange = (trackId: string) => {
-    if (!hlsInstance || isQualityChanging) return;
-    
-    try {
-      setIsQualityChanging(true);
-      const video = videoRef.current;
-      if (!video) return;
-      
-      // Save current state
-      const wasPlaying = !video.paused;
-      const currentTime = video.currentTime;
-      const currentSubtitleId = subtitleManagerRef.current?.getCurrentTrack();
-      
-      // Change audio track
-      hlsInstance.audioTrack = parseInt(trackId);
-      setCurrentAudioTrack(trackId);
-      setShowAudioMenu(false);
-      
-      // Restore playback state
-      video.currentTime = currentTime;
-      if (wasPlaying) {
-        video.play().catch(error => {
-          console.error("Error resuming playback after audio change:", error);
-          // If play fails, try to seek to the correct position
-      video.currentTime = currentTime;
-        });
-      }
-
-      // Restore subtitle track
-      if (currentSubtitleId && currentSubtitleId !== 'off' && subtitleManagerRef.current) {
-        subtitleManagerRef.current.setTrack(currentSubtitleId);
-      }
-    } catch (error) {
-      console.error('Error changing audio track:', error);
-    } finally {
-      setIsQualityChanging(false);
-    }
-  };
-
   // Update the subtitle track change handler
   const handleSubtitleTrackChange = useCallback((trackId: string) => {
     if (!subtitleManagerRef.current) return;
@@ -1679,31 +1695,24 @@ const VideoPlayer = ({
   useEffect(() => {
     if (!hlsInstance) return;
 
+    // Only set buffering on actual seeking events
     const handleHlsSeeking = () => {
-      setIsBuffering(true);
+      if (videoRef.current && videoRef.current.readyState < 2) {
+        setIsBuffering(true);
+      }
     };
 
     const handleHlsSeeked = () => {
       setIsBuffering(false);
     };
 
-    const handleHlsBuffering = (event: any, data: any) => {
-      if (data.stats) {
-        setIsBuffering(data.stats.loading);
-      }
-    };
-
-    // Use the correct HLS event types from the Hls.Events enum
+    // Remove BUFFER_APPENDING and BUFFER_APPENDED handlers
     hlsInstance.on(Hls.Events.LEVEL_LOADING, handleHlsSeeking);
     hlsInstance.on(Hls.Events.LEVEL_LOADED, handleHlsSeeked);
-    hlsInstance.on(Hls.Events.BUFFER_APPENDING, handleHlsBuffering);
-    hlsInstance.on(Hls.Events.BUFFER_APPENDED, handleHlsBuffering);
 
     return () => {
       hlsInstance.off(Hls.Events.LEVEL_LOADING, handleHlsSeeking);
       hlsInstance.off(Hls.Events.LEVEL_LOADED, handleHlsSeeked);
-      hlsInstance.off(Hls.Events.BUFFER_APPENDING, handleHlsBuffering);
-      hlsInstance.off(Hls.Events.BUFFER_APPENDED, handleHlsBuffering);
     };
   }, [hlsInstance]);
 
@@ -1782,12 +1791,18 @@ const VideoPlayer = ({
   // Show a notice when starting at lowest quality for faster start
   const [showLowQualityNotice, setShowLowQualityNotice] = useState(false);
   useEffect(() => {
-    if (hlsInstance && hlsInstance.currentLevel === 0) {
+    if (
+      hlsInstance &&
+      hlsInstance.currentLevel === 0 &&
+      currentQuality === "-1"
+    ) {
       setShowLowQualityNotice(true);
       const timeout = setTimeout(() => setShowLowQualityNotice(false), 5000);
       return () => clearTimeout(timeout);
+    } else {
+      setShowLowQualityNotice(false);
     }
-  }, [hlsInstance && hlsInstance.currentLevel]);
+  }, [hlsInstance && hlsInstance.currentLevel, currentQuality]);
 
   // Dynamically increase buffer after playback starts for smoother experience
   useEffect(() => {
@@ -1932,7 +1947,7 @@ const VideoPlayer = ({
     { label: 'Contain', value: 'contain' },
     { label: 'Cover', value: 'cover' },
   ];
-  const [aspectRatioIdx, setAspectRatioIdx] = useState(0);
+  const [aspectRatioIdx, setAspectRatioIdx] = useState(4); // 4 = 'contain' in the array
   const [showAspectToast, setShowAspectToast] = useState(false);
 
   const handleAspectRatioToggle = () => {
