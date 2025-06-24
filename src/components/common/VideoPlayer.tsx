@@ -15,6 +15,7 @@ import {
   Subtitles,
   SkipForward,
   SkipBack,
+  PictureInPicture2,
 } from "lucide-react";
 import { useWatchHistoryStore } from "../../stores/watchHistoryStore";
 import { useAuthStore } from "../../stores/authStore";
@@ -1922,6 +1923,41 @@ const VideoPlayer = ({
     };
   }, [showSubtitleMenu, showQualityMenu, showAudioMenu]);
 
+  // Aspect ratio state and logic
+  const aspectRatios = [
+    { label: 'Default', value: 'default' },
+    { label: '16:9', value: '16-9' },
+    { label: '4:3', value: '4-3' },
+    { label: 'Fill', value: 'fill' },
+    { label: 'Contain', value: 'contain' },
+    { label: 'Cover', value: 'cover' },
+  ];
+  const [aspectRatioIdx, setAspectRatioIdx] = useState(0);
+  const [showAspectToast, setShowAspectToast] = useState(false);
+
+  const handleAspectRatioToggle = () => {
+    setAspectRatioIdx((prev) => {
+      const next = (prev + 1) % aspectRatios.length;
+      setShowAspectToast(true);
+      setTimeout(() => setShowAspectToast(false), 2000);
+      return next;
+    });
+  };
+
+  // Compute video style based on aspect ratio
+  let videoStyle = {};
+  if (aspectRatios[aspectRatioIdx].value === '16-9') {
+    videoStyle = { aspectRatio: '16/9', width: '100%', height: 'auto', objectFit: 'contain' };
+  } else if (aspectRatios[aspectRatioIdx].value === '4-3') {
+    videoStyle = { aspectRatio: '4/3', width: '100%', height: 'auto', objectFit: 'contain' };
+  } else if (aspectRatios[aspectRatioIdx].value === 'fill') {
+    videoStyle = { width: '100%', height: '100%', objectFit: 'fill' };
+  } else if (aspectRatios[aspectRatioIdx].value === 'contain') {
+    videoStyle = { width: '100%', height: '100%', objectFit: 'contain' };
+  } else if (aspectRatios[aspectRatioIdx].value === 'cover') {
+    videoStyle = { width: '100%', height: '100%', objectFit: 'cover' };
+  } // else default: no override
+
   return (
     <div
       ref={containerRef}
@@ -1997,6 +2033,7 @@ const VideoPlayer = ({
         preload="metadata"
         controls={false}
         crossOrigin="anonymous"
+        style={videoStyle}
       >
         {masterUrl && (
           <source
@@ -2259,6 +2296,15 @@ const VideoPlayer = ({
             </button>
 
             <button
+              onClick={handleAspectRatioToggle}
+              className="text-white hover:text-red-500 transition-all duration-150 p-2 rounded-full bg-black/40 hover:bg-black/60 shadow-md hover:scale-110 focus:scale-110"
+              aria-label="Change aspect ratio"
+              title="Change aspect ratio"
+            >
+              <PictureInPicture2 size={24} />
+            </button>
+
+            <button
               onClick={toggleFullscreen}
                   className="text-white hover:text-gray-300 transition-colors p-2 rounded-full hover:bg-white/10"
                   aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
@@ -2432,6 +2478,12 @@ const VideoPlayer = ({
       {showLowQualityNotice && (
         <div className="absolute top-8 left-1/2 -translate-x-1/2 bg-black/80 text-white px-4 py-2 rounded shadow z-30 text-sm animate-fade-in">
           Playing in low quality for faster start
+        </div>
+      )}
+
+      {showAspectToast && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-black/80 text-white px-4 py-2 rounded shadow z-30 text-sm animate-fade-in">
+          Aspect Ratio: {aspectRatios[aspectRatioIdx].label}
         </div>
       )}
     </div>
