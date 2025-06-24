@@ -16,6 +16,7 @@ import {
   SkipForward,
   SkipBack,
   PictureInPicture2,
+  Cast as CastIcon
 } from "lucide-react";
 import { useWatchHistoryStore } from "../../stores/watchHistoryStore";
 import { useAuthStore } from "../../stores/authStore";
@@ -1973,6 +1974,77 @@ const VideoPlayer = ({
     videoStyle = { width: '100%', height: '100%', objectFit: 'cover' };
   } // else default: no override
 
+  // Add state to track cast availability
+  const [isCastAvailable, setIsCastAvailable] = useState(false);
+
+  // Check for cast support on mount
+  useEffect(() => {
+    function checkCast() {
+      if ((window as any).chrome && (window as any).chrome.cast && (window as any).cast) {
+        setIsCastAvailable(true);
+      } else {
+        setIsCastAvailable(false);
+      }
+    }
+    // Try to check immediately and after a short delay (for async SDK load)
+    checkCast();
+    const timeout = setTimeout(checkCast, 2000);
+    return () => clearTimeout(timeout);
+  }, []);
+
+  // Add after isCastAvailable state and useEffect for checking cast support
+  useEffect(() => {
+    // Initialize Cast context when SDK is available
+    if ((window as any).cast && (window as any).cast.framework) {
+      (window as any).cast.framework.CastContext.getInstance().setOptions({
+        receiverApplicationId: (window as any).chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
+        autoJoinPolicy: (window as any).chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
+      });
+    }
+  }, [isCastAvailable]);
+
+  // Helper to load media into Cast session
+  const loadCastMedia = useCallback(() => {
+    if (!(window as any).cast || !(window as any).chrome) return;
+    const castSession = (window as any).cast.framework.CastContext.getInstance().getCurrentSession();
+    if (castSession && masterUrl) {
+      const mediaInfo = new (window as any).chrome.cast.media.MediaInfo(masterUrl, 'application/x-mpegurl');
+      mediaInfo.metadata = new (window as any).chrome.cast.media.GenericMediaMetadata();
+      mediaInfo.metadata.title = title;
+      // Optionally add more metadata (e.g., poster image)
+      const request = new (window as any).chrome.cast.media.LoadRequest(mediaInfo);
+      castSession.loadMedia(request).then(
+        () => {},
+        (error: any) => { console.error('Cast load error', error); }
+      );
+    }
+  }, [masterUrl, title]);
+
+  // Listen for Cast session start and load media
+  useEffect(() => {
+    if (!(window as any).cast || !(window as any).chrome) return;
+    const context = (window as any).cast.framework.CastContext.getInstance();
+    const listener = (event: any) => {
+      if (event.sessionState === 'SESSION_STARTED' || event.sessionState === 'SESSION_RESUMED') {
+        loadCastMedia();
+      }
+    };
+    context.addEventListener((window as any).cast.framework.CastContextEventType.SESSION_STATE_CHANGED, listener);
+    return () => {
+      context.removeEventListener((window as any).cast.framework.CastContextEventType.SESSION_STATE_CHANGED, listener);
+    };
+  }, [loadCastMedia]);
+
+  // Update Cast button handler
+  const handleCastClick = () => {
+    if ((window as any).chrome && (window as any).chrome.cast && (window as any).cast) {
+      (window as any).cast.framework.CastContext.getInstance().requestSession();
+      // The session event listener will load the media
+    } else {
+      alert("Casting is not available on this device/browser.");
+    }
+  };
+
   return (
     <div
       ref={containerRef}
@@ -1983,16 +2055,27 @@ const VideoPlayer = ({
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
+      {/* Cast button at top right */}
+      {isCastAvailable && (
+        <button
+          onClick={handleCastClick}
+          className="absolute top-4 right-4 z-50 text-white hover:text-gray-300 transition-all duration-300 p-2 rounded-full hover:bg-white/10"
+          aria-label="Cast to device"
+          style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}
+        >
+          <CastIcon size={24} />
+        </button>
+      )}
       {/* Add back button */}
-              <button
-                onClick={handleBack}
+      <button
+        onClick={handleBack}
         className={`absolute top-4 left-4 z-50 text-white hover:text-gray-300 transition-all duration-300 p-2 rounded-full hover:bg-white/10 ${
           showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
         aria-label="Go back"
-              >
-                <ArrowLeft size={24} />
-              </button>
+      >
+        <ArrowLeft size={24} />
+      </button>
 
       {/* Netflix-style title overlay */}
       {showTitleOverlay && (
