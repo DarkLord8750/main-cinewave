@@ -578,7 +578,11 @@ const VideoPlayer = ({
           });
 
           hls.on(Hls.Events.BUFFER_FLUSHED, () => {
-            setIsBuffering(true);
+            if (videoRef.current && videoRef.current.readyState < 2) {
+              setIsBuffering(true);
+            } else {
+              setIsBuffering(false);
+            }
           });
 
           video.addEventListener('waiting', () => {
@@ -1700,6 +1704,8 @@ const VideoPlayer = ({
     const handleHlsSeeking = () => {
       if (videoRef.current && videoRef.current.readyState < 2) {
         setIsBuffering(true);
+      } else {
+        setIsBuffering(false);
       }
     };
 
