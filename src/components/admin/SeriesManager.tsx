@@ -181,6 +181,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
       episodeNumber: Number((form.elements.namedItem('episodeNumber') as HTMLInputElement)?.value || '0'),
       title: (form.elements.namedItem('title') as HTMLInputElement)?.value || '',
       duration: (form.elements.namedItem('duration') as HTMLInputElement)?.value || '',
+      poster_url: (form.elements.namedItem('poster_url') as HTMLInputElement)?.value || undefined,
       master_url: (form.elements.namedItem('master_url') as HTMLInputElement)?.value || undefined,
       master_url_480p: (form.elements.namedItem('master_url_480p') as HTMLInputElement)?.value || undefined,
       master_url_720p: (form.elements.namedItem('master_url_720p') as HTMLInputElement)?.value || undefined,
@@ -221,6 +222,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
         episodeNumber: formData.episodeNumber,
         title: formData.title.trim(),
         duration: formData.duration,
+        poster_url: formData.poster_url,
         master_url: formData.master_url,
         master_url_480p: formData.master_url_480p,
         master_url_720p: formData.master_url_720p,
@@ -304,6 +306,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
       episodeNumber: Number((form.elements.namedItem('episodeNumber') as HTMLInputElement)?.value || '0'),
       title: (form.elements.namedItem('title') as HTMLInputElement)?.value || '',
       duration: (form.elements.namedItem('duration') as HTMLInputElement)?.value || '',
+      poster_url: (form.elements.namedItem('poster_url') as HTMLInputElement)?.value || undefined,
       master_url: (form.elements.namedItem('master_url') as HTMLInputElement)?.value || undefined,
       master_url_480p: (form.elements.namedItem('master_url_480p') as HTMLInputElement)?.value || undefined,
       master_url_720p: (form.elements.namedItem('master_url_720p') as HTMLInputElement)?.value || undefined,
@@ -327,6 +330,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
         ...formData,
         seasonId: selectedSeason.id,
         episodeNumber: formData.episodeNumber,
+        poster_url: formData.poster_url || undefined,
         master_url: formData.master_url || undefined,
         master_url_480p: formData.master_url_480p || undefined,
         master_url_720p: formData.master_url_720p || undefined,
@@ -729,6 +733,23 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                       <p className="text-sm text-red-500 mt-1">{validationErrors.duration}</p>
                   )}
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="poster_url" className="block text-sm font-medium text-gray-700">
+                    Poster URL
+                  </label>
+                  <Input
+                    id="poster_url"
+                    name="poster_url"
+                    type="url"
+                    placeholder="https://example.com/episode_poster.jpg"
+                    disabled={isLoading}
+                    defaultValue={editEpisodeData?.poster_url}
+                    className="w-full bg-white/80 backdrop-blur-sm border-gray-200 focus:border-red-500 focus:ring-red-500/20 transition-all duration-200 shadow-sm hover:shadow"
+                  />
+                  {validationErrors.poster_url && (
+                    <p className="text-sm text-red-500 mt-1">{validationErrors.poster_url}</p>
+                  )}
                 </div>
               </div>
 
