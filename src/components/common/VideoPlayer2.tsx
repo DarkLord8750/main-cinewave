@@ -1967,6 +1967,66 @@ const VideoPlayer = ({
     if (e.key === 'Enter' || e.key === ' ') handleRetry();
   };
 
+  // Add a helper to detect mobile
+  const isMobileDevice = () => /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|Mobile/i.test(navigator.userAgent);
+
+  // Add a ref for mobile auto-hide timer
+  const mobileAutoHideTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // --- Tap to Toggle Controls (Netflix-Style, Mobile Only) ---
+  const handlePlayerTouchEnd = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobileDevice()) return;
+    const target = e.target as HTMLElement;
+    // Ignore taps on interactive UI
+    if (
+      target.closest('.controls, .progress-bar, button, input, select, textarea') ||
+      target.getAttribute('role') === 'slider' // for progress bar
+    ) {
+      return;
+    }
+    setShowControls(prev => {
+      const next = !prev;
+      // If showing controls, start auto-hide timer
+      if (next) {
+        if (mobileAutoHideTimer.current) clearTimeout(mobileAutoHideTimer.current);
+        mobileAutoHideTimer.current = setTimeout(() => setShowControls(false), 5000);
+      } else {
+        if (mobileAutoHideTimer.current) clearTimeout(mobileAutoHideTimer.current);
+      }
+      return next;
+    });
+    e.stopPropagation();
+    e.preventDefault();
+  }, []);
+
+  // Auto-hide controls after 5s of inactivity (mobile only)
+  useEffect(() => {
+    if (!isMobileDevice()) return;
+    if (showControls) {
+      if (mobileAutoHideTimer.current) clearTimeout(mobileAutoHideTimer.current);
+      mobileAutoHideTimer.current = setTimeout(() => setShowControls(false), 5000);
+    } else {
+      if (mobileAutoHideTimer.current) clearTimeout(mobileAutoHideTimer.current);
+    }
+    return () => {
+      if (mobileAutoHideTimer.current) clearTimeout(mobileAutoHideTimer.current);
+    };
+  }, [showControls]);
+
+  // --- Block player interactions when controls are hidden (mobile only) ---
+  function blockIfMobileAndControlsHidden<T extends (...args: any[]) => any>(fn: T): T {
+    return ((...args: any[]) => {
+      if (isMobileDevice() && !showControls) return;
+      return fn(...args);
+    }) as T;
+  }
+
+  // Wrap all player interaction handlers
+  const mobileTogglePlay = blockIfMobileAndControlsHidden(togglePlay);
+  const mobileSeek = blockIfMobileAndControlsHidden(seek);
+  const mobileHandleVolumeChange = blockIfMobileAndControlsHidden(handleVolumeChange);
+  const mobileHandleAspectRatioToggle = blockIfMobileAndControlsHidden(handleAspectRatioToggleWithToast);
+
   return (
     <div
       ref={containerRef}
@@ -1976,6 +2036,7 @@ const VideoPlayer = ({
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onTouchEnd={handlePlayerTouchEnd}
     >
       {/* Cast button at top right */}
       {isCastAvailable && (
@@ -2108,7 +2169,7 @@ const VideoPlayer = ({
             </button>
             
             <button
-              onClick={togglePlay}
+              onClick={mobileTogglePlay}
               className="text-white hover:text-gray-300 transition-colors p-4 rounded-full hover:bg-white/10"
               aria-label={isPlaying ? "Pause" : "Play"}
             >
@@ -2152,7 +2213,7 @@ const VideoPlayer = ({
             </button>
           
             <button
-            onClick={togglePlay}
+            onClick={mobileTogglePlay}
             className="text-white hover:text-red-500 transition-all duration-150 p-4 rounded-full bg-black/40 hover:bg-black/60 shadow-md hover:scale-110 focus:scale-110"
             aria-label={isPlaying ? "Pause" : "Play"}
             >
@@ -2330,7 +2391,7 @@ const VideoPlayer = ({
             </button>
 
             <button
-              onClick={handleAspectRatioToggleWithToast}
+              onClick={mobileHandleAspectRatioToggle}
               className="text-white hover:text-red-500 transition-all duration-150 p-2 rounded-full bg-black/40 hover:bg-black/60 shadow-md hover:scale-110 focus:scale-110"
               aria-label="Change aspect ratio"
               title="Change aspect ratio"
