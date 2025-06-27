@@ -65,7 +65,7 @@ const SeriesPage = () => {
   const [error, setError] = useState<string | null>(null);
 
   // My List logic
-  const { addToMyList, removeFromMyList } = useContentStore();
+  const { addToMyList, removeFromMyList, isInMyList } = useContentStore();
   const { currentProfile } = useAuthStore();
   const { history } = useWatchHistoryStore();
   const { getContentsByGenre } = useContentStore();
@@ -202,6 +202,13 @@ const SeriesPage = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Sync inMyList state with store when series changes
+  useEffect(() => {
+    if (series) {
+      setInMyList(isInMyList(series.id));
+    }
+  }, [series, isInMyList]);
+
   if (isLoading || !series) return <LoadingSpinner />;
 
   const handlePlay = (episode: Episode) => {
@@ -225,10 +232,13 @@ const SeriesPage = () => {
   };
 
   const handleMyList = () => {
-    if (inMyList) {
+    if (!series) return;
+    if (isInMyList(series.id)) {
       removeFromMyList(series.id);
+      setInMyList(false);
     } else {
       addToMyList(series.id);
+      setInMyList(true);
     }
   };
 
@@ -298,9 +308,6 @@ const SeriesPage = () => {
             onClose={handleClose}
             isFullScreen={true}
             autoPlay={true}
-            episodes={episodes}
-            currentEpisodeIndex={currentEpisodeIndex}
-            onChangeEpisode={handleChangeEpisode}
             episodeInfo={{
               season: selectedSeason?.season_number || 1,
               episode: currentEpisode.episode_number,
