@@ -15,7 +15,47 @@ interface CastMember {
 }
 
 // Define ratings for the dropdown
-const ratings = ["G","A", "PG", "PG-13", "R", "NC-17", "TV-Y", "TV-G", "TV-PG", "TV-14", "TV-MA"];
+const ratings = [
+  // 🇮🇳 Indian CBFC Official
+  "U",          // Universal (all ages)
+  "UA",         // Parental guidance for children under 12
+  "A",          // Adults only (18+)
+  "S",          // Restricted to specialized audiences
+
+  // 🇮🇳 Indian OTT Platforms (non-CBFC, self-regulated)
+  "U/A 7+",     // Suitable for 7+ with parental guidance
+  "U/A 13+",    // Suitable for 13+ with parental guidance
+  "U/A 16+",    // Suitable for 16+ with parental guidance
+  "18+",        // Adults only
+
+  // 🇺🇸 US Motion Picture Association (MPA)
+  "G",          // General Audiences
+  "PG",         // Parental Guidance Suggested
+  "PG-13",      // Parents Strongly Cautioned (under 13)
+  "R",          // Restricted (under 17 with adult)
+  "NC-17",      // Adults Only (no one under 17)
+
+  // 🇺🇸 US TV Parental Guidelines
+  "TV-Y",       // All Children
+  "TV-Y7",      // Older Children (7+)
+  "TV-G",       // General Audience
+  "TV-PG",      // Parental Guidance Suggested
+  "TV-14",      // Parents Strongly Cautioned (14+)
+  "TV-MA",      // Mature Audience Only (17+)
+
+  // 🇬🇧 UK British Board of Film Classification (BBFC)
+  "U (UK)",     // Universal
+  "PG (UK)",    // Parental Guidance
+  "12A",        // 12+ with adult
+  "15",         // 15 and above
+  "18",         // Adults only
+  "R18",        // Explicit adult content
+
+  // 🌍 Other / General
+  "NR",         // Not Rated
+  "Unrated",    // Not submitted for classification
+  "Pending",    // Rating not yet assigned
+];
 
 // Flexible config for video qualities (only for movies)
 const videoQualities = [
