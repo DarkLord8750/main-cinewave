@@ -13,8 +13,8 @@ import {
   RotateCw,
   Headphones,
   Subtitles,
-  SkipForward,
-  SkipBack,
+  Monitor,
+  Cast as CastIcon
 } from "lucide-react";
 import { useWatchHistoryStore } from "../../stores/watchHistoryStore";
 import { useAuthStore } from "../../stores/authStore";
@@ -23,6 +23,7 @@ import Hls from "hls.js";
 import videojs from "video.js";
 import "video.js/dist/video-js.css";
 import "videojs-hls-quality-selector";
+import LoadingSpinner from "./LoadingSpinner";
 
 interface VideoQuality {
   label: string;
@@ -42,9 +43,6 @@ interface VideoPlayerProps {
     episode: number;
     title: string;
   };
-  episodes?: any[];
-  currentEpisodeIndex?: number;
-  onChangeEpisode?: (newIndex: number) => void;
   startTime?: number;
   subtitleUrls?: { [key: string]: string };  // Add subtitle URLs prop
 }
@@ -84,17 +82,13 @@ class SubtitleManager {
     this.video = video;
   }
 
-  initialize(subtitleUrls: { [key: string]: string }) {
-    if (this.isInitialized) return;
-    
-    this.subtitleUrls = subtitleUrls;
-    
-    // Clear existing tracks
+  initialize(subtitleUrls: { [key: string]: string }, onReady?: () => void) {
+    // Always clear tracks before initializing to prevent duplication
     this.clearTracks();
-    
+    this.isInitialized = false;
+    this.subtitleUrls = subtitleUrls;
     // Add new tracks
     Object.entries(subtitleUrls).forEach(([lang, url]) => {
-      console.log(`Adding subtitle track: ${lang} - ${url}`);
       const track = document.createElement('track');
       track.kind = 'subtitles';
       track.src = url;
@@ -103,19 +97,22 @@ class SubtitleManager {
       track.default = lang === 'en';
       this.video.appendChild(track);
     });
-
     // Store track references
-    const textTracks = Array.from(this.video.textTracks);
-    console.log('Text tracks after adding:', textTracks);
-    
-    textTracks.forEach(track => {
-      this.tracks.set(track.language, track);
-    });
-
-    this.isInitialized = true;
+    setTimeout(() => {
+      const textTracks = Array.from(this.video.textTracks);
+      this.tracks.clear();
+      textTracks.forEach(track => {
+        this.tracks.set(track.language, track);
+      });
+      this.isInitialized = true;
+      // Re-sync current track
+      this.setTrack(this.currentTrack);
+      if (onReady) onReady();
+    }, 0);
   }
 
   private clearTracks() {
+    // Remove all <track> elements
     const existingTracks = Array.from(this.video.getElementsByTagName('track'));
     existingTracks.forEach(track => track.remove());
     this.tracks.clear();
@@ -138,7 +135,6 @@ class SubtitleManager {
   }
 
   setTrack(trackId: string) {
-    console.log('Setting track to:', trackId);
     this.currentTrack = trackId;
     this.tracks.forEach((track, lang) => {
       track.mode = lang === trackId ? 'showing' : 'hidden';
@@ -150,26 +146,24 @@ class SubtitleManager {
   }
 
   getAvailableTracks(): SubtitleTrack[] {
-    const tracks = Array.from(this.tracks.entries()).map(([lang, track]) => ({
+    return Array.from(this.tracks.entries()).map(([lang, track]) => ({
       id: lang,
       label: track.label,
       language: lang,
       url: this.subtitleUrls[lang] || ''
     }));
-    console.log('Getting available tracks:', tracks);
-    return tracks;
   }
 
   refresh() {
-    if (!this.isInitialized) return;
-    
-    const currentTrack = this.currentTrack;
-    this.isInitialized = false;
+    // Always re-initialize to ensure no duplication
     this.initialize(this.subtitleUrls);
-    
-    if (currentTrack !== 'off') {
-      this.setTrack(currentTrack);
-    }
+  }
+
+  destroy() {
+    this.clearTracks();
+    this.isInitialized = false;
+    this.currentTrack = 'off';
+    this.subtitleUrls = {};
   }
 }
 
@@ -195,9 +189,6 @@ const VideoPlayer = ({
   autoPlay = true,
   isFullScreen = false,
   episodeInfo,
-  episodes,
-  currentEpisodeIndex,
-  onChangeEpisode,
   startTime,
   subtitleUrls = {},  // Default to empty object
 }: VideoPlayerProps) => {
@@ -236,10 +227,7 @@ const VideoPlayer = ({
   const [touchIndicatorPosition, setTouchIndicatorPosition] = useState({ x: 0, y: 0 });
   const [touchIndicatorValue, setTouchIndicatorValue] = useState<number | null>(null);
   const [touchIndicatorType, setTouchIndicatorType] = useState<'seek' | 'volume' | null>(null);
-  const [lastTapTime, setLastTapTime] = useState(0);
-  const [lastTapPosition, setLastTapPosition] = useState<{ x: number; y: number } | null>(null);
-  const [seekAmount, setSeekAmount] = useState<number | null>(null);
-  const [showSeekIndicator, setShowSeekIndicator] = useState(false);
+
   const [audioTracks, setAudioTracks] = useState<AudioTrack[]>([]);
   const [currentAudioTrack, setCurrentAudioTrack] = useState<string>('default');
   const [showAudioMenu, setShowAudioMenu] = useState(false);
@@ -294,8 +282,6 @@ const VideoPlayer = ({
 
   // Add new state for Netflix-like UI
   const [showTitleOverlay, setShowTitleOverlay] = useState(true);
-  const [showSkipIntro, setShowSkipIntro] = useState(false);
-  const [showNextEpisode, setShowNextEpisode] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [previewTime, setPreviewTime] = useState(0);
 
@@ -481,264 +467,136 @@ const VideoPlayer = ({
 
   // Initialize HLS if needed
   useEffect(() => {
-    const initializeHls = async () => {
-      const video = videoRef.current;
-      if (!video) {
-        console.error("Video element not found");
-        return;
-      }
+    let localHls: Hls | null = null;
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
 
-      // Clean up previous HLS instance if it exists
-      if (hlsInstance) {
-        hlsInstance.destroy();
-        setHlsInstance(null);
-      }
+    // Clean up previous HLS instance
+    if (hlsInstance) {
+      hlsInstance.destroy();
+    }
 
-      // Initialize HLS if the browser supports it
-      if (masterUrl && typeof Hls !== "undefined" && Hls.isSupported()) {
-        try {
-          const hls = new Hls({
-            // Optimize buffer settings for better performance
-            maxBufferLength: 30, // Increased for smoother playback
-            maxMaxBufferLength: 60, // Increased for better buffering
-            maxBufferSize: 60 * 1000 * 1000, // 60MB buffer
-            maxBufferHole: 0.5, // Increased tolerance for gaps
-            lowLatencyMode: true,
-            backBufferLength: 90, // Increased for better seeking
-            
-            // Optimize loading settings
-            manifestLoadingTimeOut: 20000,
-            manifestLoadingMaxRetry: 4,
-            manifestLoadingRetryDelay: 1000,
-            levelLoadingTimeOut: 20000,
-            levelLoadingMaxRetry: 4,
-            levelLoadingRetryDelay: 1000,
-            fragLoadingTimeOut: 20000,
-            fragLoadingMaxRetry: 4,
-            fragLoadingRetryDelay: 1000,
-            
-            // Optimize playback settings
-            startLevel: -1, // Auto quality selection
-            abrEwmaDefaultEstimate: 500000, // 500 kbps
-            testBandwidth: true,
-            progressive: true,
-            enableWorker: true,
-            startFragPrefetch: true,
-            
-            // Advanced buffering settings
-            maxFragLookUpTolerance: 0.5,
-            maxStarvationDelay: 4,
-            maxLoadingDelay: 4,
-            minAutoBitrate: 0,
-            highBufferWatchdogPeriod: 2,
-            nudgeMaxRetry: 5,
-            nudgeOffset: 0.1,
-            
-            // Optimize network settings
-            xhrSetup: function(xhr: XMLHttpRequest, url: string) {
-              xhr.withCredentials = false;
-              // Add cache-busting parameter
+    if (masterUrl && typeof Hls !== "undefined" && Hls.isSupported()) {
+      try {
+        // Network-aware HLS startup
+        const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+        const downlink = connection?.downlink || 1; // Default to 1 Mbps if not available
+        
+        // Determine start level based on connection speed
+        let startLevel = -1; // Auto by default
+        if (downlink < 1) {
+          startLevel = 0; // Start with lowest quality for slow connections
+        } else if (downlink < 2) {
+          startLevel = 1; // Start with second lowest for moderate connections
+        }
+        // For fast connections (>= 2 Mbps), use auto (-1)
+
+        const hls = new Hls({
+          maxBufferLength: 5,
+          maxMaxBufferLength: 10,
+          maxBufferSize: 5 * 1000 * 1000, // Lower buffer size for faster start
+          maxBufferHole: 0.1, // allow smaller gaps for slow networks
+          abrEwmaDefaultEstimate: downlink < 1 ? 64000 : 500000, // Adjust based on connection
+          startLevel: startLevel,
+          lowLatencyMode: true,
+          backBufferLength: 30,
+          autoStartLoad: true,
+          startPosition: -1,
+          manifestLoadingTimeOut: 20000,
+          manifestLoadingMaxRetry: 4,
+          manifestLoadingRetryDelay: 1000,
+          levelLoadingTimeOut: 20000,
+          levelLoadingMaxRetry: 4,
+          levelLoadingRetryDelay: 1000,
+          fragLoadingTimeOut: 20000,
+          fragLoadingMaxRetry: 4,
+          fragLoadingRetryDelay: 1000,
+          testBandwidth: true,
+          progressive: true,
+          enableWorker: true,
+          startFragPrefetch: false, // Don't prefetch for faster first play
+          maxFragLookUpTolerance: 0.5,
+          maxStarvationDelay: 2,
+          maxLoadingDelay: 2,
+          minAutoBitrate: 0,
+          highBufferWatchdogPeriod: 2,
+          nudgeMaxRetry: 5,
+          nudgeOffset: 0.1,
+          abrEwmaFastLive: 1,
+          abrEwmaSlowLive: 3,
+          abrBandWidthFactor: 0.7,
+          abrBandWidthUpFactor: 0.7,
+          abrMaxWithRealBitrate: true,
+          xhrSetup: function(xhr: XMLHttpRequest, url: string) {
+            xhr.withCredentials = false;
+            if (/\.(ts|m4s|mp4)(\?|$)/i.test(url)) {
               if (url.indexOf('?') === -1) {
                 url += '?_=' + Date.now();
               } else {
                 url += '&_=' + Date.now();
               }
             }
-          });
-
-          // Add error recovery
-          hls.on(Hls.Events.ERROR, (event, data) => {
-            if (data.fatal) {
-              console.error("Fatal HLS error:", data);
-              
-              switch (data.type) {
-                case Hls.ErrorTypes.NETWORK_ERROR:
-                  console.log("Network error, trying to recover...");
-                  hls.startLoad();
-                  break;
-                case Hls.ErrorTypes.MEDIA_ERROR:
-                  console.log("Media error, trying to recover...");
-                  hls.recoverMediaError();
-                  break;
-                default:
-                  console.log("Fatal error, destroying HLS instance");
-                  hls.destroy();
-                  setHlsInstance(null);
-                  break;
-              }
+          }
+        });
+        localHls = hls;
+        
+        // Add HLS event listeners
+        hls.on(Hls.Events.ERROR, (event, data) => {
+          console.error('HLS Error:', data);
+          if (data.fatal) {
+            let msg = 'A fatal playback error occurred.';
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+              msg = 'Network error. Please check your connection.';
+            } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+              msg = 'Media error. Please try again.';
             }
-          });
+            setFatalError(msg);
+          }
+        });
 
-          // Add buffering event handlers
-          hls.on(Hls.Events.BUFFER_CREATED, () => {
-            console.log("Buffer created");
-            setIsBuffering(false);
-          });
-
-          hls.on(Hls.Events.BUFFER_APPENDED, () => {
-            console.log("Buffer appended");
-            setIsBuffering(false);
-          });
-
-          hls.on(Hls.Events.BUFFER_FLUSHED, () => {
-            console.log("Buffer flushed");
-            setIsBuffering(true);
-          });
-
-          video.addEventListener('waiting', () => {
-            console.log('Video is waiting for data.');
-            setIsBuffering(true);
-          });
-
-          video.addEventListener('playing', () => {
-            console.log('Video is playing.');
-            setIsBuffering(false);
-          });
-
-          video.addEventListener('canplay', () => {
-            console.log('Video can play through to the end.');
-            setIsBuffering(false);
-          });
-
-          video.addEventListener('canplaythrough', () => {
-            console.log('Video can play through to the end without stopping.');
-            setIsBuffering(false);
-          });
-
-          video.addEventListener('stalled', () => {
-            console.log('Video is stalled.');
-            setIsBuffering(true);
-          });
-
-          video.addEventListener('loadstart', () => {
-            console.log('Video load started.');
-            setIsBuffering(true);
-          });
-
-          video.addEventListener('loadeddata', () => {
-            console.log('Video loaded data.');
-            setIsBuffering(false);
-          });
-
-          video.addEventListener('loadedmetadata', () => {
-            console.log('Video loaded metadata.');
-            setIsBuffering(false);
-          });
-
-          video.addEventListener('progress', () => {
-            if (video.readyState < 3) {
-              setIsBuffering(true);
-            } else {
-              setIsBuffering(false);
-            }
-          });
-
-          // Add quality level monitoring
-          hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
-            console.log(`Switched to quality level: ${data.level}`);
-            
-            // Update auto quality if we're in auto mode
-            if (currentQuality === "-1") {
-              const qualityLabel = hls.levels[data.level]?.height + "P";
-              setCurrentAutoQuality(qualityLabel);
-              console.log(`Auto quality switched to: ${qualityLabel}`);
-            }
-          });
-
-          // Add audio tracks handler
-          hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (event, data) => {
-            console.log("Audio tracks updated:", data);
-            if (data.audioTracks && data.audioTracks.length > 0) {
-              const tracks = data.audioTracks.map((track, index) => ({
-                id: index.toString(),
-                label: track.name || `Audio ${index + 1}`,
-                language: track.lang || 'unknown'
-              }));
-              console.log("Setting audio tracks:", tracks);
-              setAudioTracks(tracks);
-              
-              // Set initial audio track if not set
-              if (!currentAudioTrack && tracks.length > 0) {
-                const defaultTrack = tracks.find(track => track.language === 'hi') || tracks[0];
-                setCurrentAudioTrack(defaultTrack.id);
-                hls.audioTrack = parseInt(defaultTrack.id);
-                console.log(`Set initial audio track to ${defaultTrack.id} (${defaultTrack.label})`);
-              } else if (currentAudioTrack) {
-                // Restore previously selected audio track
-                try {
-                  hls.audioTrack = parseInt(currentAudioTrack);
-                  console.log(`Restored audio track to ${currentAudioTrack} after tracks update`);
-                } catch (error) {
-                  console.error('Error restoring audio track after tracks update:', error);
-                }
-              }
-            }
-          });
-
-          // Add audio track switched handler
-          hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (event, data) => {
-            console.log('Audio track switched:', data);
-            if (data.id !== undefined) {
-              setCurrentAudioTrack(data.id.toString());
-              console.log(`Updated current audio track to ${data.id}`);
-            }
-          });
-
-          // Attach media and load source
-          hls.attachMedia(video);
-          hls.loadSource(masterUrl);
-
-          // Handle HLS events
-          hls.on(Hls.Events.MANIFEST_PARSED, () => {
-            console.log("HLS manifest parsed successfully");
+        hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+          const qualities: VideoQuality[] = data.levels.map((level: any, index: number) => ({
+            label: `${level.height}p`,
+            value: index.toString()
+          }));
+          qualities.unshift({ label: "AUTO", value: "-1" });
+          setAvailableQualities(qualities);
           
-            // Set available qualities
-            if (hls.levels && hls.levels.length > 0) {
-              const hlsQualities = [
-                { label: "AUTO", value: "-1" },
-                ...hls.levels.map((level, index) => ({
-                  label: `${level.height}P`,
-                  value: index.toString()
-                }))
-              ];
-              setAvailableQualities(hlsQualities);
-              
-              // Set initial quality
-              if (!initialQualitySet.current) {
-                hls.currentLevel = -1; // Start with auto
-                setCurrentQuality("-1");
-                initialQualitySet.current = true;
-              } else {
-                // Restore previous quality if set
-                const qualityLevel = parseInt(currentQuality);
-                if (!isNaN(qualityLevel)) {
-                  hls.currentLevel = qualityLevel;
-                }
-              }
-            }
-            
-            // Start playback immediately
-            video.play().catch(error => {
-              console.error("Error playing video:", error);
-              setPlayerError("Failed to play video. Please try refreshing the page.");
-            });
-          });
+          // Set audio tracks
+          if (data.audioTracks && data.audioTracks.length > 0) {
+            const tracks: AudioTrack[] = data.audioTracks.map((track: any, index: number) => ({
+              id: index.toString(),
+              label: track.name || `Audio ${index + 1}`,
+              language: track.lang || 'unknown'
+            }));
+            setAudioTracks(tracks);
+          }
+        });
 
-          setHlsInstance(hls);
-        } catch (error) {
-          console.error("Error initializing HLS:", error);
-          setPlayerError("Failed to initialize video player. Please try refreshing the page.");
-        }
-      } else {
-        console.error("No HLS playback method available for this browser");
-        setPlayerError("Your browser does not support HLS video playback. Please try using Chrome, Firefox, Safari, or Edge.");
+        hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
+          const level = hls.levels[data.level];
+          if (level) {
+            setCurrentAutoQuality(`${level.height}p`);
+          }
+        });
+
+        hls.attachMedia(video);
+        hls.loadSource(masterUrl);
+        setTimeout(() => {
+          video.play().catch(() => {});
+        }, 0);
+        setHlsInstance(hls);
+      } catch (error) {
+        setPlayerError("Failed to initialize video player. Please try refreshing the page.");
       }
-    };
-
-    // Execute the async function
-    initializeHls();
-
+    }
+    // Cleanup function
     return () => {
+      if (localHls) {
+        localHls.destroy();
+      }
       if (hlsInstance) {
         hlsInstance.destroy();
       }
@@ -828,28 +686,20 @@ const VideoPlayer = ({
   const handleEnded = useCallback(() => {
     if (!videoRef.current) return;
     
-      setIsPlaying(false);
-      setCurrentTime(0);
+    setIsPlaying(false);
+    setCurrentTime(0);
     videoRef.current.currentTime = 0; // Force reset to beginning
     
-      if (currentProfile?.id) {
-        try {
+    if (currentProfile?.id) {
+      try {
         // Reset watch time to 0 when video ends
         updateWatchHistory(0, true);
         console.log("Video ended, resetting watch time to 0");
-        } catch (error) {
-          console.error("Error updating watch history at end:", error);
-        }
+      } catch (error) {
+        console.error("Error updating watch history at end:", error);
       }
-
-      if (
-        typeof currentEpisodeIndex === "number" &&
-        onChangeEpisode &&
-        currentEpisodeIndex < (episodes?.length || 0) - 1
-      ) {
-        onChangeEpisode(currentEpisodeIndex + 1);
     }
-  }, [currentProfile?.id, currentEpisodeIndex, episodes?.length, onChangeEpisode, updateWatchHistory]);
+  }, [currentProfile?.id, updateWatchHistory]);
 
   const handleWaiting = useCallback(() => {
     setIsBuffering(true);
@@ -867,30 +717,6 @@ const VideoPlayer = ({
     setIsLoading(false);
   }, []);
 
-  // Add error recovery for buffering issues
-  const handleError = useCallback((event: ErrorEvent) => {
-    const video = event.target as HTMLVideoElement;
-    console.error("Video error:", video.error);
-    
-    if (video.error?.code === MediaError.MEDIA_ERR_ABORTED) {
-      return;
-    }
-    
-    // Try to recover from buffering issues
-    if (video.error?.code === MediaError.MEDIA_ERR_NETWORK || 
-        video.error?.code === MediaError.MEDIA_ERR_DECODE) {
-      // Reset to beginning if stuck at end
-      if (video.currentTime >= video.duration * 0.9) {
-        video.currentTime = 0;
-        setCurrentTime(0);
-        console.log("Recovering from buffering issue by resetting to start");
-      }
-      
-      // Try to reload the video
-      video.load();
-      video.play().catch(console.error);
-    }
-  }, []);
 
   // Add error recovery effect
   useEffect(() => {
@@ -922,6 +748,15 @@ const VideoPlayer = ({
       document.removeEventListener('keydown', handleUserInteraction);
     };
   }, [playerError]);
+
+  // Update video error handler to set fatalError
+  const handleError = useCallback((event: ErrorEvent) => {
+    const video = event.target as HTMLVideoElement;
+    if (video.error?.code === MediaError.MEDIA_ERR_ABORTED) return;
+    if (video.error?.code === MediaError.MEDIA_ERR_NETWORK || video.error?.code === MediaError.MEDIA_ERR_DECODE) {
+      setFatalError('A fatal video error occurred. Please try again.');
+    }
+  }, []);
 
   // Update video event listeners effect
   useEffect(() => {
@@ -1080,61 +915,97 @@ const VideoPlayer = ({
     }
   }, [isMuted, volume]);
 
+  // Ref to store resume time after quality/audio change
+  const resumeTimeRef = useRef<number | null>(null);
+  const resumeWasPlayingRef = useRef<boolean>(false);
+
+  // Update the quality change handler
   const handleQualityChange = (quality: string) => {
     if (!hlsInstance || isQualityChanging) return;
-
-    try {
-      setIsQualityChanging(true);
-      const video = videoRef.current;
-      if (!video) return;
-      
-      // Save current state
-      const wasPlaying = !video.paused;
-      const currentTime = video.currentTime;
-      const currentAudioTrackId = currentAudioTrack;
-      const currentSubtitleId = subtitleManagerRef.current?.getCurrentTrack();
-      
-      // Change quality
-      const qualityLevel = parseInt(quality);
+    setIsQualityChanging(true);
+    const video = videoRef.current;
+    if (!video) return;
+    // Save current state
+    const wasPlaying = !video.paused;
+    const currentTime = video.currentTime;
+    const currentAudioTrackId = currentAudioTrack;
+    const currentSubtitleId = subtitleManagerRef.current?.getCurrentTrack();
+    resumeTimeRef.current = currentTime;
+    resumeWasPlayingRef.current = wasPlaying;
+    const qualityLevel = parseInt(quality);
+    if (quality === "-1") {
+      hlsInstance.currentLevel = -1;
+      setCurrentAutoQuality("");
+    } else {
       hlsInstance.currentLevel = qualityLevel;
-      setCurrentQuality(quality);
-      setShowQualityMenu(false);
-      
-      if (quality === "-1") {
-        setCurrentAutoQuality("");
-      }
-      
-      // Restore playback state
-      video.currentTime = currentTime;
-        if (wasPlaying) {
-        video.play().catch(error => {
-          console.error("Error resuming playback after quality change:", error);
-          // If play fails, try to seek to the correct position
-          video.currentTime = currentTime;
-        });
-      }
-
-      // Restore audio track
-      if (currentAudioTrackId) {
-        try {
-          hlsInstance.audioTrack = parseInt(currentAudioTrackId);
-        } catch (error) {
-          console.error('Error restoring audio track:', error);
-        }
-      }
-
-      // Restore subtitle track
-      if (currentSubtitleId && currentSubtitleId !== 'off' && subtitleManagerRef.current) {
+    }
+    setCurrentQuality(quality);
+    setShowQualityMenu(false);
+    // Restore audio track
+    if (currentAudioTrackId) {
+      try {
+        hlsInstance.audioTrack = parseInt(currentAudioTrackId);
+      } catch (error) {}
+    }
+    // Restore subtitle track
+    if (subtitleManagerRef.current) {
+      subtitleManagerRef.current.refresh();
+      if (currentSubtitleId && currentSubtitleId !== 'off') {
         subtitleManagerRef.current.setTrack(currentSubtitleId);
       }
-    } catch (error) {
-      console.error('Error during quality change:', error);
-    } finally {
-      setTimeout(() => {
-        setIsQualityChanging(false);
-      }, 500);
     }
+    setTimeout(() => setIsQualityChanging(false), 500);
   };
+
+  // Update the audio track change handler
+  const handleAudioTrackChange = (trackId: string) => {
+    if (!hlsInstance || isQualityChanging) return;
+    setIsQualityChanging(true);
+    const video = videoRef.current;
+    if (!video) return;
+    const wasPlaying = !video.paused;
+    const currentTime = video.currentTime;
+    const currentSubtitleId = subtitleManagerRef.current?.getCurrentTrack();
+    resumeTimeRef.current = currentTime;
+    resumeWasPlayingRef.current = wasPlaying;
+    hlsInstance.audioTrack = parseInt(trackId);
+    setCurrentAudioTrack(trackId);
+    setShowAudioMenu(false);
+    if (subtitleManagerRef.current) {
+      subtitleManagerRef.current.refresh();
+      if (currentSubtitleId && currentSubtitleId !== 'off') {
+        subtitleManagerRef.current.setTrack(currentSubtitleId);
+      }
+    }
+    setIsQualityChanging(false);
+  };
+
+  // Seek to resume time after quality/audio change
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    function tryResumePlayback() {
+      if (!video) return;
+      if (
+        resumeTimeRef.current !== null &&
+        Math.abs((video.currentTime || 0) - resumeTimeRef.current) > 0.5 &&
+        video.duration > resumeTimeRef.current
+      ) {
+        video.currentTime = resumeTimeRef.current;
+      }
+      if (resumeWasPlayingRef.current) {
+        video.play().catch(() => {});
+      }
+      resumeTimeRef.current = null;
+      resumeWasPlayingRef.current = false;
+    }
+    video.addEventListener('loadedmetadata', tryResumePlayback);
+    video.addEventListener('canplay', tryResumePlayback);
+    return () => {
+      video.removeEventListener('loadedmetadata', tryResumePlayback);
+      video.removeEventListener('canplay', tryResumePlayback);
+    };
+  }, []);
 
   // Show controls on any mouse move (global)
   useEffect(() => {
@@ -1426,46 +1297,6 @@ const VideoPlayer = ({
     currentQuality,
   });
 
-  // Update the audio track change handler
-  const handleAudioTrackChange = (trackId: string) => {
-    if (!hlsInstance || isQualityChanging) return;
-    
-    try {
-      setIsQualityChanging(true);
-      const video = videoRef.current;
-      if (!video) return;
-      
-      // Save current state
-      const wasPlaying = !video.paused;
-      const currentTime = video.currentTime;
-      const currentSubtitleId = subtitleManagerRef.current?.getCurrentTrack();
-      
-      // Change audio track
-      hlsInstance.audioTrack = parseInt(trackId);
-      setCurrentAudioTrack(trackId);
-      setShowAudioMenu(false);
-      
-      // Restore playback state
-      video.currentTime = currentTime;
-      if (wasPlaying) {
-        video.play().catch(error => {
-          console.error("Error resuming playback after audio change:", error);
-          // If play fails, try to seek to the correct position
-      video.currentTime = currentTime;
-        });
-      }
-
-      // Restore subtitle track
-      if (currentSubtitleId && currentSubtitleId !== 'off' && subtitleManagerRef.current) {
-        subtitleManagerRef.current.setTrack(currentSubtitleId);
-      }
-    } catch (error) {
-      console.error('Error changing audio track:', error);
-    } finally {
-      setIsQualityChanging(false);
-    }
-  };
-
   // Update the subtitle track change handler
   const handleSubtitleTrackChange = useCallback((trackId: string) => {
     if (!subtitleManagerRef.current) return;
@@ -1524,40 +1355,7 @@ const VideoPlayer = ({
     };
   }, [hlsInstance]);
 
-  // Update episode handling
-  const handleEpisodeChange = useCallback((newIndex: number) => {
-    if (!episodes || !onChangeEpisode) return;
-    
-    try {
-      // Save current playback state
-      const wasPlaying = !videoRef.current?.paused;
-      const currentTime = videoRef.current?.currentTime || 0;
-      
-      // Update episode
-      onChangeEpisode(newIndex);
-      
-      // Reset player state
-      setIsPlaying(false);
-      setCurrentTime(0);
-      setShowControls(true);
-      setShowTitleOverlay(true);
-      
-      // Clear any existing error
-      setPlayerError(null);
-      
-      // Wait for the new video to load
-      if (videoRef.current) {
-        videoRef.current.load();
-        
-        // Try to restore playback state
-        if (wasPlaying) {
-          videoRef.current.play().catch(console.error);
-        }
-      }
-    } catch (error) {
-      console.error('Error changing episode:', error);
-    }
-  }, [episodes, onChangeEpisode]);
+
 
   // Add effect to handle HLS events
   useEffect(() => {
@@ -1589,64 +1387,45 @@ const VideoPlayer = ({
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !subtitleUrls || Object.keys(subtitleUrls).length === 0) {
-      console.log('No subtitle URLs provided');
       return;
     }
-
-    console.log('Initializing subtitles with URLs:', subtitleUrls);
-
+    // Clean up previous subtitle manager
+    if (subtitleManagerRef.current) {
+      subtitleManagerRef.current.destroy();
+      subtitleManagerRef.current = null;
+    }
     // Initialize subtitle manager
-    if (!subtitleManagerRef.current) {
-      subtitleManagerRef.current = new SubtitleManager(video);
-    }
-    
-    // Initialize tracks
-    subtitleManagerRef.current.initialize(subtitleUrls);
-    
-    // Update available tracks state
-    const tracks = subtitleManagerRef.current.getAvailableTracks();
-    console.log('Available subtitle tracks:', tracks);
-    
-    if (tracks.length > 0) {
+    subtitleManagerRef.current = new SubtitleManager(video);
+    subtitleManagerRef.current.initialize(subtitleUrls, () => {
+      const tracks = subtitleManagerRef.current!.getAvailableTracks();
       setSubtitleTracks(tracks);
-      
-      // Set initial track to English or first available
-      const defaultTrack = tracks.find(track => track.language === 'en') || tracks[0];
-      console.log('Setting default subtitle track:', defaultTrack);
-      setCurrentSubtitleTrack(defaultTrack.id);
-      subtitleManagerRef.current.setTrack(defaultTrack.id);
-    } else {
-      console.log('No subtitle tracks found after initialization');
-    }
-
+      if (tracks.length > 0) {
+        const defaultTrack = tracks.find(track => track.language === 'en') || tracks[0];
+        setCurrentSubtitleTrack(defaultTrack.id);
+        subtitleManagerRef.current!.setTrack(defaultTrack.id);
+      } else {
+        setCurrentSubtitleTrack('off');
+      }
+    });
     // Add track change listener
     const handleTrackChange = () => {
       const textTracks = Array.from(video.textTracks);
-      console.log('Text tracks changed:', textTracks.map(t => ({
-        language: t.language,
-        mode: t.mode,
-        label: t.label
-      })));
-      
       const showingTrack = textTracks.find(track => track.mode === 'showing');
       if (showingTrack) {
-        console.log('Setting current subtitle track to:', showingTrack.language);
         setCurrentSubtitleTrack(showingTrack.language);
       } else {
-        console.log('No showing track found, setting to off');
         setCurrentSubtitleTrack('off');
       }
     };
-
     video.addEventListener('texttrackchange', handleTrackChange);
-
     return () => {
       video.removeEventListener('texttrackchange', handleTrackChange);
       if (subtitleManagerRef.current) {
-        subtitleManagerRef.current.refresh();
+        subtitleManagerRef.current.destroy();
+        subtitleManagerRef.current = null;
       }
     };
-  }, [subtitleUrls]);
+  }, [subtitleUrls, currentQuality, currentAudioTrack]);
 
   // Add cleanup for watch history
   useEffect(() => {
@@ -1691,31 +1470,26 @@ const VideoPlayer = ({
   useEffect(() => {
     if (!hlsInstance) return;
 
+    // Only set buffering on actual seeking events
     const handleHlsSeeking = () => {
-      setIsBuffering(true);
+      if (videoRef.current && videoRef.current.readyState < 2) {
+        setIsBuffering(true);
+      } else {
+        setIsBuffering(false);
+      }
     };
 
     const handleHlsSeeked = () => {
       setIsBuffering(false);
     };
 
-    const handleHlsBuffering = (event: any, data: any) => {
-      if (data.stats) {
-        setIsBuffering(data.stats.loading);
-      }
-    };
-
-    // Use the correct HLS event types from the Hls.Events enum
+    // Remove BUFFER_APPENDING and BUFFER_APPENDED handlers
     hlsInstance.on(Hls.Events.LEVEL_LOADING, handleHlsSeeking);
     hlsInstance.on(Hls.Events.LEVEL_LOADED, handleHlsSeeked);
-    hlsInstance.on(Hls.Events.BUFFER_APPENDING, handleHlsBuffering);
-    hlsInstance.on(Hls.Events.BUFFER_APPENDED, handleHlsBuffering);
 
     return () => {
       hlsInstance.off(Hls.Events.LEVEL_LOADING, handleHlsSeeking);
       hlsInstance.off(Hls.Events.LEVEL_LOADED, handleHlsSeeked);
-      hlsInstance.off(Hls.Events.BUFFER_APPENDING, handleHlsBuffering);
-      hlsInstance.off(Hls.Events.BUFFER_APPENDED, handleHlsBuffering);
     };
   }, [hlsInstance]);
 
@@ -1740,6 +1514,459 @@ const VideoPlayer = ({
     handleVolumeChange(newVolume * 100);
   }, []);
 
+  // Debounced buffering spinner logic
+  const bufferingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [showBufferingSpinner, setShowBufferingSpinner] = useState(false);
+
+  // Debounce spinner display: only show if buffering lasts > 300ms
+  useEffect(() => {
+    if (isBuffering) {
+      if (!bufferingTimeoutRef.current) {
+        bufferingTimeoutRef.current = setTimeout(() => {
+          setShowBufferingSpinner(true);
+        }, 300);
+      }
+    } else {
+      if (bufferingTimeoutRef.current) {
+        clearTimeout(bufferingTimeoutRef.current);
+        bufferingTimeoutRef.current = null;
+      }
+      setShowBufferingSpinner(false);
+    }
+    return () => {
+      if (bufferingTimeoutRef.current) {
+        clearTimeout(bufferingTimeoutRef.current);
+        bufferingTimeoutRef.current = null;
+      }
+    };
+  }, [isBuffering]);
+
+  // Add state for buffered ranges
+  const [bufferedRanges, setBufferedRanges] = useState<{start: number, end: number}[]>([]);
+
+  // Update buffered ranges on timeupdate and progress
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const updateBuffered = () => {
+      const ranges: {start: number, end: number}[] = [];
+      for (let i = 0; i < video.buffered.length; i++) {
+        ranges.push({ start: video.buffered.start(i), end: video.buffered.end(i) });
+      }
+      setBufferedRanges(ranges);
+    };
+    video.addEventListener('progress', updateBuffered);
+    video.addEventListener('timeupdate', updateBuffered);
+    video.addEventListener('loadedmetadata', updateBuffered);
+    return () => {
+      video.removeEventListener('progress', updateBuffered);
+      video.removeEventListener('timeupdate', updateBuffered);
+      video.removeEventListener('loadedmetadata', updateBuffered);
+    };
+  }, []);
+
+  // Show a notice when starting at lowest quality for faster start
+  const [showLowQualityNotice, setShowLowQualityNotice] = useState(false);
+  useEffect(() => {
+    if (
+      hlsInstance &&
+      hlsInstance.currentLevel === 0 &&
+      currentQuality === "-1"
+    ) {
+      setShowLowQualityNotice(true);
+      const timeout = setTimeout(() => setShowLowQualityNotice(false), 5000);
+      return () => clearTimeout(timeout);
+    } else {
+      setShowLowQualityNotice(false);
+    }
+  }, [hlsInstance && hlsInstance.currentLevel, currentQuality]);
+
+  // Dynamically increase buffer after playback starts for smoother experience
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !hlsInstance) return;
+
+    const handleFirstPlay = () => {
+      if (hlsInstance.config.maxBufferLength < 30) {
+        hlsInstance.config.maxBufferLength = 30;
+        hlsInstance.config.maxMaxBufferLength = 60;
+      }
+      video.removeEventListener('playing', handleFirstPlay);
+    };
+
+    video.addEventListener('playing', handleFirstPlay);
+    return () => {
+      video.removeEventListener('playing', handleFirstPlay);
+    };
+  }, [hlsInstance]);
+
+  // Add a ref to track if the user is interacting with progress bar or volume slider
+  const isTouchingInteractiveControl = useRef(false);
+
+  // Update touch handlers for progress bar
+  const handleProgressTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    isTouchingInteractiveControl.current = true;
+    setShowControls(true);
+    setShowTitleOverlay(true);
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    if (typeof handleTouchStart === 'function') handleTouchStart(e);
+  }, [handleTouchStart]);
+
+  const handleProgressTouchEnd = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    isTouchingInteractiveControl.current = false;
+    if (typeof handleTouchEnd === 'function') handleTouchEnd(e);
+    // Start hide timer after interaction ends
+    if (isPlaying) {
+      controlsTimeoutRef.current = setTimeout(() => {
+        if (!isMouseOverControls.current && isPlaying && !isTouchingInteractiveControl.current) {
+          setShowControls(false);
+          setShowTitleOverlay(false);
+        }
+      }, 2500);
+    }
+  }, [handleTouchEnd, isPlaying]);
+
+  // Update touch handlers for volume slider
+  const handleVolumeTouchStartWrapper = useCallback((e: React.TouchEvent<HTMLInputElement>) => {
+    isTouchingInteractiveControl.current = true;
+    setShowControls(true);
+    setShowTitleOverlay(true);
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    if (typeof handleVolumeTouchStart === 'function') handleVolumeTouchStart(e);
+  }, [handleVolumeTouchStart]);
+
+  const handleVolumeTouchEndWrapper = useCallback((e: React.TouchEvent<HTMLInputElement>) => {
+    isTouchingInteractiveControl.current = false;
+    // Start hide timer after interaction ends
+    if (isPlaying) {
+      controlsTimeoutRef.current = setTimeout(() => {
+        if (!isMouseOverControls.current && isPlaying && !isTouchingInteractiveControl.current) {
+          setShowControls(false);
+          setShowTitleOverlay(false);
+        }
+      }, 2500);
+    }
+  }, [isPlaying]);
+
+  // Update menu icon click handlers to toggle menus and close others
+  const handleSubtitleMenuToggle = () => {
+    setShowSubtitleMenu((prev) => {
+      if (!prev) {
+        setShowQualityMenu(false);
+        setShowAudioMenu(false);
+      }
+      return !prev;
+    });
+  };
+  const handleQualityMenuToggle = () => {
+    setShowQualityMenu((prev) => {
+      if (!prev) {
+        setShowSubtitleMenu(false);
+        setShowAudioMenu(false);
+      }
+      return !prev;
+    });
+  };
+  const handleAudioMenuToggle = () => {
+    setShowAudioMenu((prev) => {
+      if (!prev) {
+        setShowSubtitleMenu(false);
+        setShowQualityMenu(false);
+      }
+      return !prev;
+    });
+  };
+
+  // Add refs for menu icons and menus
+  const subtitleIconRef = useRef<HTMLButtonElement>(null);
+  const qualityIconRef = useRef<HTMLButtonElement>(null);
+  const audioIconRef = useRef<HTMLButtonElement>(null);
+  const subtitleMenuRef = useRef<HTMLDivElement>(null);
+  const qualityMenuRef = useRef<HTMLDivElement>(null);
+  const audioMenuRef = useRef<HTMLDivElement>(null);
+
+  // Robust menu close logic
+  useEffect(() => {
+    if (!(showSubtitleMenu || showQualityMenu || showAudioMenu)) return;
+    function handleDocumentClick(e: MouseEvent | TouchEvent) {
+      const target = e.target as Node;
+      // If any menu is open, check if click is outside all menus and icons
+      if (
+        (showSubtitleMenu &&
+          !subtitleMenuRef.current?.contains(target) &&
+          !subtitleIconRef.current?.contains(target)) ||
+        (showQualityMenu &&
+          !qualityMenuRef.current?.contains(target) &&
+          !qualityIconRef.current?.contains(target)) ||
+        (showAudioMenu &&
+          !audioMenuRef.current?.contains(target) &&
+          !audioIconRef.current?.contains(target))
+      ) {
+        setShowSubtitleMenu(false);
+        setShowQualityMenu(false);
+        setShowAudioMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleDocumentClick);
+    document.addEventListener('touchstart', handleDocumentClick);
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentClick);
+      document.removeEventListener('touchstart', handleDocumentClick);
+    };
+  }, [showSubtitleMenu, showQualityMenu, showAudioMenu]);
+
+  // Aspect ratio state and logic
+  const aspectRatios = [
+    { label: 'Default', value: 'default' },
+    { label: '16:9', value: '16-9' },
+    { label: '4:3', value: '4-3' },
+    { label: 'Fill', value: 'fill' },
+    { label: 'Contain', value: 'contain' },
+    { label: 'Cover', value: 'cover' },
+  ];
+  const [aspectRatioIdx, setAspectRatioIdx] = useState(4); // 4 = 'contain' in the array
+ 
+  // Compute video style based on aspect ratio
+  let videoStyle = {};
+  if (aspectRatios[aspectRatioIdx].value === '16-9') {
+    videoStyle = { aspectRatio: '16/9', width: '100%', height: 'auto', objectFit: 'contain' };
+  } else if (aspectRatios[aspectRatioIdx].value === '4-3') {
+    videoStyle = { aspectRatio: '4/3', width: '100%', height: 'auto', objectFit: 'contain' };
+  } else if (aspectRatios[aspectRatioIdx].value === 'fill') {
+    videoStyle = { width: '100%', height: '100%', objectFit: 'fill' };
+  } else if (aspectRatios[aspectRatioIdx].value === 'contain') {
+    videoStyle = { width: '100%', height: '100%', objectFit: 'contain' };
+  } else if (aspectRatios[aspectRatioIdx].value === 'cover') {
+    videoStyle = { width: '100%', height: '100%', objectFit: 'cover' };
+  } // else default: no override
+
+  // Add state to track cast availability
+  const [isCastAvailable, setIsCastAvailable] = useState(false);
+
+  // Check for cast support on mount
+  useEffect(() => {
+    function checkCast() {
+      if ((window as any).chrome && (window as any).chrome.cast && (window as any).cast) {
+        setIsCastAvailable(true);
+      } else {
+        setIsCastAvailable(false);
+      }
+    }
+    // Try to check immediately and after a short delay (for async SDK load)
+    checkCast();
+    const timeout = setTimeout(checkCast, 2000);
+    return () => clearTimeout(timeout);
+  }, []);
+
+  // Add after isCastAvailable state and useEffect for checking cast support
+  useEffect(() => {
+    // Initialize Cast context when SDK is available
+    if ((window as any).cast && (window as any).cast.framework) {
+      (window as any).cast.framework.CastContext.getInstance().setOptions({
+        receiverApplicationId: (window as any).chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
+        autoJoinPolicy: (window as any).chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
+      });
+    }
+  }, [isCastAvailable]);
+
+  // Helper to load media into Cast session
+  const loadCastMedia = useCallback(() => {
+    if (!(window as any).cast || !(window as any).chrome) return;
+    const castSession = (window as any).cast.framework.CastContext.getInstance().getCurrentSession();
+    if (castSession && masterUrl) {
+      const mediaInfo = new (window as any).chrome.cast.media.MediaInfo(masterUrl, 'application/x-mpegurl');
+      mediaInfo.metadata = new (window as any).chrome.cast.media.GenericMediaMetadata();
+      mediaInfo.metadata.title = title;
+      // Optionally add more metadata (e.g., poster image)
+      const request = new (window as any).chrome.cast.media.LoadRequest(mediaInfo);
+      castSession.loadMedia(request).then(
+        () => {},
+        (error: any) => { console.error('Cast load error', error); }
+      );
+    }
+  }, [masterUrl, title]);
+
+  // Listen for Cast session start and load media
+  useEffect(() => {
+    if (!(window as any).cast || !(window as any).chrome) return;
+    const context = (window as any).cast.framework.CastContext.getInstance();
+    const listener = (event: any) => {
+      if (event.sessionState === 'SESSION_STARTED' || event.sessionState === 'SESSION_RESUMED') {
+        loadCastMedia();
+      }
+    };
+    context.addEventListener((window as any).cast.framework.CastContextEventType.SESSION_STATE_CHANGED, listener);
+    return () => {
+      context.removeEventListener((window as any).cast.framework.CastContextEventType.SESSION_STATE_CHANGED, listener);
+    };
+  }, [loadCastMedia]);
+
+  // Update Cast button handler
+  const handleCastClick = () => {
+    if ((window as any).chrome && (window as any).chrome.cast && (window as any).cast) {
+      (window as any).cast.framework.CastContext.getInstance().requestSession();
+      // The session event listener will load the media
+    } else {
+      alert("Casting is not available on this device/browser.");
+    }
+  };
+
+  // Manifest preloading logic
+  // Preload manifest in background when component mounts (before play)
+  const manifestPreloadCache = new Map<string, string>();
+  useEffect(() => {
+    if (!masterUrl) return;
+    if (manifestPreloadCache.has(masterUrl)) return;
+    fetch(masterUrl, { method: 'GET', cache: 'reload' })
+      .then(res => res.text())
+      .then(text => {
+        manifestPreloadCache.set(masterUrl, text);
+      })
+      .catch(() => {});
+  }, [masterUrl]);
+
+  // --- Persist and restore audio track across episode switches ---
+  // Store last selected audio track in a ref
+  const lastAudioTrackRef = useRef<string | null>(null);
+
+  // When audio track changes, update the ref
+  useEffect(() => {
+    if (currentAudioTrack) {
+      lastAudioTrackRef.current = currentAudioTrack;
+    }
+  }, [currentAudioTrack]);
+
+  // On audio tracks change, restore last selected audio track if available
+  useEffect(() => {
+    if (!hlsInstance || !audioTracks.length) return;
+    if (lastAudioTrackRef.current) {
+      const found = audioTracks.find(t => t.id === lastAudioTrackRef.current);
+      if (found) {
+        try {
+          hlsInstance.audioTrack = parseInt(found.id);
+          setCurrentAudioTrack(found.id);
+        } catch {}
+      }
+    }
+  }, [hlsInstance, audioTracks]);
+
+  // --- Resume overlay state ---
+  const [showResumeOverlay, setShowResumeOverlay] = useState(false);
+  const [resumeTime, setResumeTime] = useState<number | null>(null);
+
+  // Show resume overlay if lastWatchedTime is valid and not near the end
+  useEffect(() => {
+    if (
+      typeof lastWatchedTime === 'number' &&
+      lastWatchedTime > 0 &&
+      duration > 0 &&
+      lastWatchedTime < duration * 0.9
+    ) {
+      setResumeTime(lastWatchedTime);
+      setShowResumeOverlay(true);
+    } else {
+      setShowResumeOverlay(false);
+    }
+  }, [lastWatchedTime, duration]);
+
+  // Prevent autoplay until resume overlay is handled
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  useEffect(() => {
+    if (showResumeOverlay) {
+      setAutoplayBlocked(true);
+      if (videoRef.current) {
+        videoRef.current.pause();
+      }
+    } else {
+      setAutoplayBlocked(false);
+    }
+  }, [showResumeOverlay]);
+
+  // Handler for resume/start over
+  const handleResumeChoice = (resume: boolean) => {
+    if (!videoRef.current) return;
+    if (resume && typeof resumeTime === 'number') {
+      videoRef.current.currentTime = resumeTime;
+    } else {
+      videoRef.current.currentTime = 0;
+    }
+    setShowResumeOverlay(false);
+    setTimeout(() => {
+      videoRef.current?.play().catch(() => {});
+    }, 100);
+  };
+
+  // --- Toast notices for quality and aspect ratio changes ---
+  const [showQualityToast, setShowQualityToast] = useState<string | null>(null);
+  const [showAspectToast, setShowAspectToast] = useState(false);
+  const [aspectToastMsg, setAspectToastMsg] = useState<string | null>(null);
+
+  // Show toast when quality changes
+  const handleQualityChangeWithToast = (quality: string) => {
+    if (!hlsInstance || isQualityChanging) return;
+    let label = '';
+    if (quality === '-1') {
+      label = 'Auto';
+    } else {
+      const q = availableQualities.find(q => q.value === quality);
+      label = q ? q.label : quality;
+    }
+    setShowQualityToast(`Quality set to ${label}`);
+    setTimeout(() => setShowQualityToast(null), 2000);
+    handleQualityChange(quality);
+  };
+
+  // Show toast when aspect ratio changes
+  const handleAspectRatioToggleWithToast = () => {
+    setAspectRatioIdx((prev) => {
+      const next = (prev + 1) % aspectRatios.length;
+      setAspectToastMsg(`Aspect Ratio: ${aspectRatios[next].label}`);
+      setShowAspectToast(true);
+      setTimeout(() => setShowAspectToast(false), 2000);
+      return next;
+    });
+  };
+
+  // --- Buffering/Initial Spinner State ---
+  const [showInitialSpinner, setShowInitialSpinner] = useState(true);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const handleCanPlay = () => setShowInitialSpinner(false);
+    const handleLoadStart = () => setShowInitialSpinner(true);
+    video.addEventListener('canplay', handleCanPlay);
+    video.addEventListener('loadstart', handleLoadStart);
+    return () => {
+      video.removeEventListener('canplay', handleCanPlay);
+      video.removeEventListener('loadstart', handleLoadStart);
+    };
+  }, []);
+
+  // --- Fatal error state for retry overlay ---
+  const [fatalError, setFatalError] = useState<string | null>(null);
+
+  // Retry logic
+  const handleRetry = () => {
+    setFatalError(null);
+    setPlayerError(null);
+    setCurrentQuality('-1');
+    setCurrentAudioTrack('default');
+    setIsQualityChanging(false);
+    setTimeout(() => {
+      if (videoRef.current) {
+        videoRef.current.load();
+        videoRef.current.play().catch(() => {});
+      }
+    }, 100);
+  };
+
+  // Overlay keyboard handler
+  const handleErrorOverlayKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') setFatalError(null);
+    if (e.key === 'Enter' || e.key === ' ') handleRetry();
+  };
+
   return (
     <div
       ref={containerRef}
@@ -1750,16 +1977,27 @@ const VideoPlayer = ({
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
+      {/* Cast button at top right */}
+      {isCastAvailable && (
+        <button
+          onClick={handleCastClick}
+          className="absolute top-4 right-4 z-50 text-white hover:text-gray-300 transition-all duration-300 p-2 rounded-full hover:bg-white/10"
+          aria-label="Cast to device"
+          style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}
+        >
+          <CastIcon size={24} />
+        </button>
+      )}
       {/* Add back button */}
-              <button
-                onClick={handleBack}
+      <button
+        onClick={handleBack}
         className={`absolute top-4 left-4 z-50 text-white hover:text-gray-300 transition-all duration-300 p-2 rounded-full hover:bg-white/10 ${
           showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
         aria-label="Go back"
-              >
-                <ArrowLeft size={24} />
-              </button>
+      >
+        <ArrowLeft size={24} />
+      </button>
 
       {/* Netflix-style title overlay */}
       {showTitleOverlay && (
@@ -1787,18 +2025,14 @@ const VideoPlayer = ({
           isQualityChanging ? 'opacity-50 scale-[0.98]' : 'opacity-100 scale-100'
         }`}
         onPlay={() => {
-          console.log("Video play event");
           setIsPlaying(true);
         }}
         onPause={() => {
-          console.log("Video pause event");
           setIsPlaying(false);
         }}
         onLoadedMetadata={() => {
-          console.log("Video metadata loaded");
           if (videoRef.current && subtitleManagerRef.current) {
             const textTracks = Array.from(videoRef.current.textTracks);
-            console.log('Available text tracks after metadata:', textTracks);
             if (currentSubtitleTrack === 'off') {
               textTracks.forEach(track => track.mode = 'disabled');
             } else {
@@ -1807,14 +2041,18 @@ const VideoPlayer = ({
               });
             }
           }
+          // Prevent autoplay if resume overlay is showing
+          if (autoplayBlocked && videoRef.current) {
+            videoRef.current.pause();
+          }
         }}
         playsInline
         muted={isMuted}
         tabIndex={0}
-        aria-label="Video player"
-        preload="auto"
+        preload="metadata"
         controls={false}
         crossOrigin="anonymous"
+        style={videoStyle}
       >
         {masterUrl && (
           <source
@@ -1845,6 +2083,15 @@ const VideoPlayer = ({
         ))}
         Sorry, your browser does not support embedded videos.
       </video>
+
+      {/* Loading indicator (initial load or buffering) */}
+      {(showInitialSpinner || isBuffering) && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-50 pointer-events-none">
+          <div className="pointer-events-auto">
+            <LoadingSpinner />
+          </div>
+        </div>
+      )}
 
       {/* Netflix-style title overlay */}
       {showTitleOverlay && (
@@ -1890,30 +2137,15 @@ const VideoPlayer = ({
       )}
       */}
 
-      {/* Netflix-style next episode button */}
-      {showNextEpisode && episodes && currentEpisodeIndex !== undefined && (
-        <div className="absolute bottom-20 right-4 bg-black/80 p-4 rounded-md">
-          <h3 className="text-white text-lg font-medium mb-2">Next Episode</h3>
-          <p className="text-gray-300 text-sm mb-4">
-            {episodes[currentEpisodeIndex + 1]?.title}
-          </p>
-          <button
-            className="bg-white text-black px-4 py-2 rounded-md hover:bg-gray-200 transition-colors"
-            onClick={() => handleEpisodeChange(currentEpisodeIndex + 1)}
-          >
-            Play Next
-          </button>
-        </div>
-      )}
+
 
       {/* Center controls overlay */}
-      <div className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${
-        showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-      }`}>
-        <div className="flex items-center space-x-8">
+      <div className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        style={{ fontFamily: 'Inter, Arial, sans-serif', textShadow: '0 1px 2px rgba(0,0,0,0.7)' }}>
+        <div className="flex items-center space-x-8 z-20">
             <button
             onClick={() => seek(-10)}
-            className="text-white hover:text-gray-300 transition-colors p-4 rounded-full hover:bg-white/10"
+            className="text-white hover:text-red-500 transition-all duration-150 p-4 rounded-full bg-black/40 hover:bg-black/60 shadow-md hover:scale-110 focus:scale-110"
             aria-label="Rewind 10 seconds"
             >
             <RotateCcw size={32} />
@@ -1921,7 +2153,7 @@ const VideoPlayer = ({
           
             <button
             onClick={togglePlay}
-            className="text-white hover:text-gray-300 transition-colors p-4 rounded-full hover:bg-white/10"
+            className="text-white hover:text-red-500 transition-all duration-150 p-4 rounded-full bg-black/40 hover:bg-black/60 shadow-md hover:scale-110 focus:scale-110"
             aria-label={isPlaying ? "Pause" : "Play"}
             >
             {isPlaying ? <Pause size={40} /> : <Play size={40} />}
@@ -1929,7 +2161,7 @@ const VideoPlayer = ({
           
             <button
               onClick={() => seek(10)}
-            className="text-white hover:text-gray-300 transition-colors p-4 rounded-full hover:bg-white/10"
+            className="text-white hover:text-red-500 transition-all duration-150 p-4 rounded-full bg-black/40 hover:bg-black/60 shadow-md hover:scale-110 focus:scale-110"
             aria-label="Forward 10 seconds"
             >
             <RotateCw size={32} />
@@ -1948,40 +2180,73 @@ const VideoPlayer = ({
                 <div className="py-3 -my-3 px-4 -mx-4" style={{ margin: '0 -1rem', padding: '0.75rem 1rem' }}>
                   <div
                     ref={progressRef}
-                    className="h-1.5 bg-gray-600/50 rounded-full cursor-pointer relative group"
+                    className="relative w-full h-4 cursor-pointer group transition-shadow duration-200 focus:outline-none focus:ring-2 focus:ring-red-500"
                     onMouseDown={handleProgressMouseDown}
                     onMouseMove={handleProgressHover}
                     onMouseLeave={handleProgressLeave}
-                    onTouchStart={handleTouchStart}
+                    onTouchStart={handleProgressTouchStart}
                     onTouchMove={handleTouchMove}
-                    onTouchEnd={handleTouchEnd}
-                    onTouchCancel={handleTouchEnd}
-                    style={{ touchAction: 'pan-x' }}
+                    onTouchEnd={handleProgressTouchEnd}
+                    onTouchCancel={handleProgressTouchEnd}
+                    style={{ touchAction: 'pan-x', minHeight: '1rem' }}
+                    tabIndex={0}
+                    aria-label="Seek bar"
+                    role="slider"
+                    aria-valuenow={Math.round((dragProgress ?? currentTime))}
+                    aria-valuemin={0}
+                    aria-valuemax={Math.round(duration)}
+                    onKeyDown={e => {
+                      if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') seek(-5);
+                      if (e.key === 'ArrowRight' || e.key === 'ArrowUp') seek(5);
+                    }}
                   >
+                    {/* Background bar */}
+                    <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-800 rounded-full -translate-y-1/2" />
+                    {/* Buffered bar */}
+                    {bufferedRanges.map((range, idx) => (
+                      <div
+                        key={idx}
+                        className="absolute top-1/2 h-1 bg-[#e0e0e0]/90 rounded-full -translate-y-1/2"
+                        style={{
+                          left: `${(range.start / duration) * 100}%`,
+                          width: `${((range.end - range.start) / duration) * 100}%`,
+                          zIndex: 1,
+                        }}
+                      />
+                    ))}
+                    {/* Progress bar */}
                     <div
-                      className="h-full bg-red-600 rounded-full relative transition-all duration-100"
+                      className="absolute top-1/2 left-0 h-2 bg-red-600 rounded-full shadow-md -translate-y-1/2"
                       style={{
                         width: `${((dragProgress ?? currentTime) / duration) * 100}%`,
+                        zIndex: 2,
+                      }}
+                    />
+                    {/* Handle */}
+                    <div
+                      className="absolute top-1/2"
+                      style={{
+                        left: `calc(${((dragProgress ?? currentTime) / duration) * 100}% - 0.5rem)`,
+                        zIndex: 3,
                       }}
                     >
-                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 transform scale-100 group-hover:scale-110" />
-                    </div>
-                    {((hoverPosition && !isDraggingRef.current) || isHoldingToSeek) && (
                       <div
-                        className="absolute top-0 h-full w-1 bg-white opacity-50 transition-opacity duration-200"
-                        style={{ left: `${hoverPosition?.x}px` }}
+                        className="w-4 h-4 bg-white border-2 border-red-600 rounded-full shadow-lg transition-transform duration-150 transform -translate-y-1/2 scale-90 group-hover:scale-125 group-focus:scale-125 focus:outline-none"
+                        tabIndex={0}
+                        aria-label="Seek handle"
                       />
+                    </div>
+                    {/* Tooltip above handle */}
+                    {hoverPosition && (
+                      <div
+                        className="absolute -top-8 left-0 px-2 py-1 bg-black/80 text-white text-xs rounded shadow pointer-events-none transition-opacity duration-150 font-sans"
+                        style={{ left: `${hoverPosition.x}px`, transform: 'translateX(-50%)', textShadow: '0 1px 2px rgba(0,0,0,0.7)' }}
+                      >
+                        {formatTime(hoverPosition.time)}
+                      </div>
                     )}
                   </div>
                 </div>
-                {((hoverPosition && !isDraggingRef.current) || isHoldingToSeek) && (
-                  <div
-                    className="absolute bottom-full left-0 transform -translate-x-1/2 mb-2 px-2 py-1 text-white text-sm pointer-events-none"
-                    style={{ left: `${hoverPosition?.x}px` }}
-                  >
-                    {formatTime(hoverPosition?.time || 0)}
-                  </div>
-                )}
               </div>
               <div className="text-white text-sm min-w-[100px]">
                 {formatTime(currentTime)} / {formatTime(duration)}
@@ -1992,19 +2257,21 @@ const VideoPlayer = ({
           {/* Controls */}
           <div 
             ref={controlsAreaRef}
-            className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/50 to-transparent transition-all duration-300 ease-in-out z-10"
+            className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 via-black/60 to-transparent transition-all duration-300 ease-in-out z-10"
             onMouseEnter={handleControlsMouseEnter}
             onMouseLeave={handleControlsMouseLeave}
             onTouchStart={(e) => e.stopPropagation()}
             onTouchMove={(e) => e.stopPropagation()}
+            style={{ fontFamily: 'Inter, Arial, sans-serif', textShadow: '0 1px 2px rgba(0,0,0,0.7)' }}
           >
             <div className="flex items-center justify-between">
               {/* Volume controls */}
               <div className="flex items-center space-x-2" onTouchStart={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()}>
                 <button
                   onClick={toggleMute}
-                  className="text-white hover:text-gray-300 transition-colors p-2 rounded-full hover:bg-white/10"
+                  className="text-white hover:text-gray-300 transition-colors p-2 rounded-full hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-red-500"
                   aria-label={isMuted ? "Unmute" : "Mute"}
+                  tabIndex={0}
                 >
                   {isMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
                 </button>
@@ -2016,10 +2283,19 @@ const VideoPlayer = ({
                     step="1"
                     value={volume * 100}
                     onChange={(e) => handleVolumeChange(parseInt(e.target.value))}
-                    onTouchStart={handleVolumeTouchStart}
+                    onTouchStart={handleVolumeTouchStartWrapper}
                     onTouchMove={handleVolumeTouchMove}
-                    className="w-20 accent-white cursor-pointer"
+                    className="w-20 accent-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500"
                     aria-label="Volume"
+                    role="slider"
+                    aria-valuenow={Math.round(volume * 100)}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    tabIndex={0}
+                    onKeyDown={e => {
+                      if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') handleVolumeChange(Math.max(0, Math.round(volume * 100) - 5));
+                      if (e.key === 'ArrowRight' || e.key === 'ArrowUp') handleVolumeChange(Math.min(100, Math.round(volume * 100) + 5));
+                    }}
                   />
                 </div>
               </div>
@@ -2027,29 +2303,40 @@ const VideoPlayer = ({
               {/* Other controls */}
               <div className="flex items-center space-x-2">
             <button
-              onClick={() => setShowSubtitleMenu(!showSubtitleMenu)}
-                  className={`text-white transition-colors p-2 rounded-full hover:bg-white/10 ${
-                    currentSubtitleTrack !== 'off' ? 'text-red-500' : ''
-                  }`}
-                  aria-label="Subtitle settings"
+              ref={subtitleIconRef}
+              onClick={e => { e.stopPropagation(); handleSubtitleMenuToggle(); }}
+              className={`text-white transition-colors p-2 rounded-full hover:bg-white/10 ${currentSubtitleTrack !== 'off' ? 'text-red-500' : ''}`}
+              aria-label="Subtitle settings"
             >
               <Subtitles size={24} />
             </button>
 
             <button
-              onClick={() => setShowAudioMenu(!showAudioMenu)}
-                  className="text-white hover:text-gray-300 transition-colors p-2 rounded-full hover:bg-white/10"
-                  aria-label="Audio settings"
+              ref={audioIconRef}
+              onClick={e => { e.stopPropagation(); handleAudioMenuToggle(); }}
+              className="text-white hover:text-gray-300 transition-colors p-2 rounded-full hover:bg-white/10"
+              aria-label="Audio settings"
             >
               <Headphones size={24} />
             </button>
 
             <button
-              onClick={() => setShowQualityMenu(!showQualityMenu)}
-                  className="text-white hover:text-gray-300 transition-colors p-2 rounded-full hover:bg-white/10"
-                  aria-label="Quality settings"
+              ref={qualityIconRef}
+              onClick={e => { e.stopPropagation(); handleQualityMenuToggle(); }}
+              className="text-white hover:text-gray-300 transition-colors p-2 rounded-full hover:bg-white/10"
+              aria-label="Quality settings"
             >
               <Settings size={24} />
+            </button>
+
+            <button
+              onClick={handleAspectRatioToggleWithToast}
+              className="text-white hover:text-red-500 transition-all duration-150 p-2 rounded-full bg-black/40 hover:bg-black/60 shadow-md hover:scale-110 focus:scale-110"
+              aria-label="Change aspect ratio"
+              title="Change aspect ratio"
+              tabIndex={0}
+            >
+              <Monitor size={24} />
             </button>
 
             <button
@@ -2067,14 +2354,17 @@ const VideoPlayer = ({
 
       {/* Netflix-style menus */}
       {showQualityMenu && (
-        <div className={`absolute bottom-16 right-4 bg-black/90 p-4 rounded-md shadow-lg transform transition-all duration-200 ease-in-out min-w-[200px] quality-menu z-20 ${
-          showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-        }`}>
+        <div
+          ref={qualityMenuRef}
+          className={`absolute bottom-16 right-4 bg-black/90 p-4 rounded-md shadow-lg transform transition-all duration-200 ease-in-out min-w-[200px] quality-menu z-20 ${
+            showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+          }`}
+        >
           <h3 className="text-white text-lg font-medium mb-2">Quality</h3>
           {availableQualities.map((quality) => (
             <button
               key={quality.value}
-              onClick={() => handleQualityChange(quality.value)}
+              onClick={() => handleQualityChangeWithToast(quality.value)}
               className={`block w-full text-left px-4 py-2 rounded-md transition-colors duration-200 ${
                 currentQuality === quality.value
                   ? "bg-white text-black"
@@ -2097,9 +2387,12 @@ const VideoPlayer = ({
       )}
 
       {showSubtitleMenu && (
-        <div className={`absolute bottom-16 right-4 bg-black/90 p-4 rounded-md min-w-[200px] shadow-lg transform transition-all duration-200 ease-in-out subtitle-menu z-20 ${
-          showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-        }`}>
+        <div
+          ref={subtitleMenuRef}
+          className={`absolute bottom-16 right-4 bg-black/90 p-4 rounded-md min-w-[200px] shadow-lg transform transition-all duration-200 ease-in-out subtitle-menu z-20 ${
+            showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+          }`}
+        >
           <h3 className="text-white text-lg font-medium mb-2">Subtitles</h3>
           <button
             onClick={() => handleSubtitleTrackChange("off")}
@@ -2132,9 +2425,12 @@ const VideoPlayer = ({
       )}
 
       {showAudioMenu && (
-        <div className={`absolute bottom-16 right-4 bg-black/90 p-4 rounded-md shadow-lg transform transition-all duration-200 ease-in-out audio-menu z-20 ${
-          showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-        }`}>
+        <div
+          ref={audioMenuRef}
+          className={`absolute bottom-16 right-4 bg-black/90 p-4 rounded-md shadow-lg transform transition-all duration-200 ease-in-out audio-menu z-20 ${
+            showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+          }`}
+        >
           <h3 className="text-white text-lg font-medium mb-2">Audio</h3>
           {audioTracks.map((track) => (
             <button
@@ -2167,9 +2463,11 @@ const VideoPlayer = ({
       )}
 
       {/* Loading indicator */}
-      {isBuffering && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-          <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin" />
+      {showBufferingSpinner && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10 pointer-events-none">
+          <div className="pointer-events-auto">
+            <LoadingSpinner />
+          </div>
         </div>
       )}
 
@@ -2203,6 +2501,104 @@ const VideoPlayer = ({
               </span>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Loading indicator */}
+      {showBufferingSpinner && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10 pointer-events-none">
+          <div className="pointer-events-auto">
+            <LoadingSpinner />
+          </div>
+        </div>
+      )}
+
+      {/* Low quality notice */}
+      {showLowQualityNotice && (
+        <div className="absolute top-8 left-1/2 -translate-x-1/2 bg-black/80 text-white px-4 py-2 rounded shadow z-30 text-sm animate-fade-in">
+          Playing in low quality for faster start
+        </div>
+      )}
+
+      
+
+      {/* Resume overlay (Netflix-style) */}
+      {showResumeOverlay && resumeTime !== null && (
+        <div
+          className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80"
+          tabIndex={-1}
+          aria-modal="true"
+          role="dialog"
+          onKeyDown={e => {
+            if (e.key === 'Escape') setShowResumeOverlay(false);
+            if (e.key === 'Enter' || e.key === ' ') handleResumeChoice(true);
+          }}
+        >
+          <div className="bg-black/90 rounded-lg p-8 shadow-xl flex flex-col items-center">
+            <div className="text-white text-xl font-semibold mb-4">
+              Resume from {formatTime(resumeTime)}?
+            </div>
+            <div className="flex space-x-4">
+              <button
+                className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded font-bold text-lg shadow"
+                onClick={() => handleResumeChoice(true)}
+                aria-label="Resume playback"
+              >
+                Resume
+              </button>
+              <button
+                className="bg-gray-700 hover:bg-gray-800 text-white px-6 py-2 rounded font-bold text-lg shadow"
+                onClick={() => handleResumeChoice(false)}
+                aria-label="Start from beginning"
+              >
+                Start Over
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Toast for quality change */}
+      {showQualityToast && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-black/80 text-white px-4 py-2 rounded shadow z-30 text-sm animate-fade-in">
+          {showQualityToast}
+        </div>
+      )}
+      {/* Toast for aspect ratio change */}
+      {showAspectToast && aspectToastMsg && (
+        <div className="absolute top-28 left-1/2 -translate-x-1/2 bg-black/80 text-white px-4 py-2 rounded shadow z-30 text-sm animate-fade-in">
+          {aspectToastMsg}
+        </div>
+      )}
+      {fatalError && (
+        <div
+          className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/90"
+          tabIndex={-1}
+          aria-modal="true"
+          role="dialog"
+          onKeyDown={handleErrorOverlayKey}
+        >
+          <div className="bg-black/95 rounded-lg p-8 shadow-xl flex flex-col items-center max-w-md">
+            <div className="text-red-500 text-xl font-semibold mb-4">Playback Error</div>
+            <div className="text-white text-base mb-6 text-center">{fatalError}</div>
+            <div className="flex space-x-4">
+              <button
+                className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded font-bold text-lg shadow focus:outline-none focus:ring-2 focus:ring-red-500"
+                onClick={handleRetry}
+                aria-label="Retry playback"
+                tabIndex={0}
+              >
+                Retry
+              </button>
+              <button
+                className="bg-gray-700 hover:bg-gray-800 text-white px-6 py-2 rounded font-bold text-lg shadow focus:outline-none focus:ring-2 focus:ring-gray-500"
+                onClick={handleBack}
+                aria-label="Go back"
+                tabIndex={0}
+              >
+                Back
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
