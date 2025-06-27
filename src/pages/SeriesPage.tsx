@@ -351,13 +351,16 @@ const SeriesPage = () => {
                   <span className="px-2 py-0.5 border rounded">HD</span>
                 </div>
 
-                <div className="flex items-center gap-3 mb-6">
+                <div className="flex flex-col sm:flex-row gap-3 mb-6 w-full">
                   <button
                     onClick={handleMyList}
-                    className="flex items-center gap-2 px-6 sm:px-8 py-2 sm:py-3 bg-gray-700 bg-opacity-70 text-white font-bold rounded hover:bg-gray-600 transition shadow"
+                    className="group relative flex items-center justify-center gap-2 w-full sm:w-auto px-6 sm:px-8 py-3 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all duration-300 border border-white/10 hover:border-white/20 overflow-hidden text-base sm:text-base"
                   >
-                    {inMyList ? <Check size={20} /> : <Plus size={20} />}
-                    <span className="hidden sm:inline">{inMyList ? 'Remove from List' : 'My List'}</span>
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    <div className="relative flex items-center gap-2">
+                      {inMyList ? <Check className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                      <span className="font-medium tracking-wide">{inMyList ? 'Remove from List' : 'My List'}</span>
+                    </div>
                   </button>
                 </div>
 
