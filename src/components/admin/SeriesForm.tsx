@@ -38,6 +38,7 @@ interface EpisodeFormData {
   episodeNumber: number;
   title: string;
   duration: string;
+  poster_url?: string;
   master_url?: string;
   master_url_480p?: string;
   master_url_720p?: string;
@@ -51,6 +52,7 @@ interface EpisodeFormData {
 const defaultEpisode: Omit<EpisodeFormData, 'episodeNumber'> = {
   title: '',
   duration: '',
+  poster_url: '',
   master_url: '',
   master_url_480p: '',
   master_url_720p: '',
@@ -81,6 +83,7 @@ const SeriesForm = ({ initialData, onSave, onCancel }: SeriesFormProps) => {
         episodeNumber: episode.episodeNumber,
         title: episode.title || '',
         duration: episode.duration,
+        poster_url: episode.poster_url,
         master_url: episode.master_url,
         master_url_480p: episode.master_url_480p,
         master_url_720p: episode.master_url_720p,
@@ -370,6 +373,7 @@ const SeriesForm = ({ initialData, onSave, onCancel }: SeriesFormProps) => {
                               <td className="py-2"><input type="text" value={editEpisodeData?.title ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, title: e.target.value } : d)} className="w-32 border rounded p-1" /></td>
                               <td className="py-2"><input type="text" value={editEpisodeData?.duration ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, duration: e.target.value } : d)} className="w-20 border rounded p-1" /></td>
                               <td className="py-2">
+                                <input type="url" placeholder="Poster URL" value={editEpisodeData?.poster_url ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, poster_url: e.target.value } : d)} className="w-24 border rounded p-1 mb-1" />
                                 <input type="url" placeholder="Master URL" value={editEpisodeData?.master_url ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, master_url: e.target.value } : d)} className="w-24 border rounded p-1 mb-1" />
                                 <input type="url" placeholder="Master URL 480p" value={editEpisodeData?.master_url_480p ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, master_url_480p: e.target.value } : d)} className="w-24 border rounded p-1 mb-1" />
                                 <input type="url" placeholder="Master URL 720p" value={editEpisodeData?.master_url_720p ?? ''} onChange={e => setEditEpisodeData(d => d ? { ...d, master_url_720p: e.target.value } : d)} className="w-24 border rounded p-1 mb-1" />
