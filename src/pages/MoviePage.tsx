@@ -231,10 +231,10 @@ const MoviePage = () => {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex items-center gap-3 mb-6">
+                <div className="flex flex-col sm:flex-row gap-3 mb-6 w-full">
                   <button
                     onClick={handlePlay}
-                    className="group relative flex items-center gap-2 px-6 sm:px-8 py-2 sm:py-3 bg-netflix-red hover:bg-red-700 rounded-lg text-white transition-all duration-300 shadow-lg hover:shadow-red-500/30 overflow-hidden"
+                    className="group relative flex items-center justify-center gap-2 w-full sm:w-auto px-6 sm:px-8 py-3 bg-netflix-red hover:bg-red-700 rounded-lg text-white transition-all duration-300 shadow-lg hover:shadow-red-500/30 overflow-hidden text-base sm:text-base"
                   >
                     <div className="absolute inset-0 bg-gradient-to-r from-red-600 to-red-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                     <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-red-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
@@ -245,7 +245,7 @@ const MoviePage = () => {
                   </button>
                   <button
                     onClick={handleMyList}
-                    className="group relative flex items-center gap-2 px-6 sm:px-8 py-2 sm:py-3 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all duration-300 border border-white/10 hover:border-white/20 overflow-hidden"
+                    className="group relative flex items-center justify-center gap-2 w-full sm:w-auto px-6 sm:px-8 py-3 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all duration-300 border border-white/10 hover:border-white/20 overflow-hidden text-base sm:text-base"
                   >
                     <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                     <div className="relative flex items-center gap-2">
@@ -253,10 +253,10 @@ const MoviePage = () => {
                       <span className="font-medium tracking-wide">My List</span>
                     </div>
                   </button>
-                  <div className="relative">
+                  <div className="relative w-full sm:w-auto">
                     <button
                       onClick={() => setShowDownloadMenu(!showDownloadMenu)}
-                      className="group relative flex items-center gap-2 px-6 sm:px-8 py-2 sm:py-3 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all duration-300 border border-white/10 hover:border-white/20 overflow-hidden"
+                      className="group relative flex items-center justify-center gap-2 w-full sm:w-auto px-6 sm:px-8 py-3 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all duration-300 border border-white/10 hover:border-white/20 overflow-hidden text-base sm:text-base"
                     >
                       <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                       <div className="relative flex items-center gap-2">
