@@ -181,7 +181,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
       episodeNumber: Number((form.elements.namedItem('episodeNumber') as HTMLInputElement)?.value || '0'),
       title: (form.elements.namedItem('title') as HTMLInputElement)?.value || '',
       duration: (form.elements.namedItem('duration') as HTMLInputElement)?.value || '',
-      poster_url: (form.elements.namedItem('poster_url') as HTMLInputElement)?.value || undefined,
+      thumbnail: (form.elements.namedItem('thumbnail') as HTMLInputElement)?.value || undefined,
       master_url: (form.elements.namedItem('master_url') as HTMLInputElement)?.value || undefined,
       master_url_480p: (form.elements.namedItem('master_url_480p') as HTMLInputElement)?.value || undefined,
       master_url_720p: (form.elements.namedItem('master_url_720p') as HTMLInputElement)?.value || undefined,
@@ -222,7 +222,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
         episodeNumber: formData.episodeNumber,
         title: formData.title.trim(),
         duration: formData.duration,
-        poster_url: formData.poster_url,
+        thumbnail: formData.thumbnail,
         master_url: formData.master_url,
         master_url_480p: formData.master_url_480p,
         master_url_720p: formData.master_url_720p,
@@ -306,7 +306,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
       episodeNumber: Number((form.elements.namedItem('episodeNumber') as HTMLInputElement)?.value || '0'),
       title: (form.elements.namedItem('title') as HTMLInputElement)?.value || '',
       duration: (form.elements.namedItem('duration') as HTMLInputElement)?.value || '',
-      poster_url: (form.elements.namedItem('poster_url') as HTMLInputElement)?.value || undefined,
+      thumbnail: (form.elements.namedItem('thumbnail') as HTMLInputElement)?.value || undefined,
       master_url: (form.elements.namedItem('master_url') as HTMLInputElement)?.value || undefined,
       master_url_480p: (form.elements.namedItem('master_url_480p') as HTMLInputElement)?.value || undefined,
       master_url_720p: (form.elements.namedItem('master_url_720p') as HTMLInputElement)?.value || undefined,
@@ -330,7 +330,7 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
         ...formData,
         seasonId: selectedSeason.id,
         episodeNumber: formData.episodeNumber,
-        poster_url: formData.poster_url || undefined,
+        thumbnail: formData.thumbnail || undefined,
         master_url: formData.master_url || undefined,
         master_url_480p: formData.master_url_480p || undefined,
         master_url_720p: formData.master_url_720p || undefined,
@@ -735,20 +735,20 @@ const SeriesManager = ({ contentId, seasons, onSeasonsUpdated }: SeriesManagerPr
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="poster_url" className="block text-sm font-medium text-gray-700">
-                    Poster URL
+                  <label htmlFor="thumbnail" className="block text-sm font-medium text-gray-700">
+                    Thumbnail URL
                   </label>
                   <Input
-                    id="poster_url"
-                    name="poster_url"
+                    id="thumbnail"
+                    name="thumbnail"
                     type="url"
-                    placeholder="https://example.com/episode_poster.jpg"
+                    placeholder="https://example.com/episode_thumbnail.jpg"
                     disabled={isLoading}
-                    defaultValue={editEpisodeData?.poster_url}
+                    defaultValue={editEpisodeData?.thumbnail}
                     className="w-full bg-white/80 backdrop-blur-sm border-gray-200 focus:border-red-500 focus:ring-red-500/20 transition-all duration-200 shadow-sm hover:shadow"
                   />
-                  {validationErrors.poster_url && (
-                    <p className="text-sm text-red-500 mt-1">{validationErrors.poster_url}</p>
+                  {validationErrors.thumbnail && (
+                    <p className="text-sm text-red-500 mt-1">{validationErrors.thumbnail}</p>
                   )}
                 </div>
               </div>
