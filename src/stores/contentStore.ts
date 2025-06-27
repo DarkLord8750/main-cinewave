@@ -44,7 +44,7 @@ export interface Episode {
   title: string;
   description?: string;
   duration: string;
-  poster_url?: string;
+  thumbnail?: string;
   master_url?: string;
   master_url_480p?: string;
   master_url_720p?: string;
@@ -183,7 +183,7 @@ export const useContentStore = create<ContentState>()(
                 episodeNumber: episode.episode_number,
                 title: episode.title || '',
                 duration: episode.duration || '',
-                poster_url: episode.poster_url,
+                thumbnail: episode.thumbnail,
                 master_url: episode.master_url,
                 master_url_480p: episode.master_url_480p,
                 master_url_720p: episode.master_url_720p,
@@ -407,7 +407,7 @@ export const useContentStore = create<ContentState>()(
                   video_url_1080p: episode.videoUrl1080p,
                   video_url_4k: episode.videoUrl4k,
                   subtitle_urls: episode.subtitle_urls,
-                  poster_url: episode.poster_url
+                  thumbnail: episode.thumbnail
                 }));
 
                 const { error: episodesError } = await supabase
@@ -547,7 +547,7 @@ export const useContentStore = create<ContentState>()(
                           video_url_1080p: episode.videoUrl1080p,
                           video_url_4k: episode.videoUrl4k,
                           subtitle_urls: episode.subtitle_urls,
-                          poster_url: episode.poster_url
+                          thumbnail: episode.thumbnail
                         })
                         .eq('id', episode.id);
 
@@ -570,7 +570,7 @@ export const useContentStore = create<ContentState>()(
                           video_url_1080p: episode.videoUrl1080p,
                           video_url_4k: episode.videoUrl4k,
                           subtitle_urls: episode.subtitle_urls,
-                          poster_url: episode.poster_url
+                          thumbnail: episode.thumbnail
                         });
 
                       if (newEpisodeError) throw newEpisodeError;
@@ -607,7 +607,7 @@ export const useContentStore = create<ContentState>()(
                     video_url_1080p: episode.videoUrl1080p,
                     video_url_4k: episode.videoUrl4k,
                     subtitle_urls: episode.subtitle_urls,
-                    poster_url: episode.poster_url
+                    thumbnail: episode.thumbnail
                   }));
 
                   const { error: episodesError } = await supabase
@@ -769,15 +769,15 @@ export const useContentStore = create<ContentState>()(
             p_title: episode.title,
             p_description: episode.description || '',
             p_duration: episode.duration || '',
-            p_poster_url: episode.poster_url,
-            p_master_url: episode.master_url,
-            p_master_url_480p: episode.master_url_480p,
-            p_master_url_720p: episode.master_url_720p,
-            p_master_url_1080p: episode.master_url_1080p,
+            p_thumbnail: episode.thumbnail,
             p_video_url_480p: episode.videoUrl480p,
             p_video_url_720p: episode.videoUrl720p,
             p_video_url_1080p: episode.videoUrl1080p,
             p_video_url_4k: episode.videoUrl4k,
+            p_master_url: episode.master_url,
+            p_master_url_480p: episode.master_url_480p,
+            p_master_url_720p: episode.master_url_720p,
+            p_master_url_1080p: episode.master_url_1080p,
             p_subtitle_urls: episode.subtitle_urls
           });
           if (error) throw error;
@@ -806,7 +806,7 @@ export const useContentStore = create<ContentState>()(
               video_url_1080p: episode.videoUrl1080p,
               video_url_4k: episode.videoUrl4k,
               subtitle_urls: episode.subtitle_urls,
-              poster_url: episode.poster_url
+              thumbnail: episode.thumbnail
             })
             .eq('id', episodeId);
           if (error) throw error;
