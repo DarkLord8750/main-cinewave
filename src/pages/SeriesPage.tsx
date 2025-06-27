@@ -35,6 +35,7 @@ interface Episode {
   episode_number: number;
   title: string;
   description: string;
+  poster_url?: string;
   video_url_480p?: string;
   video_url_720p?: string;
   video_url_1080p?: string;
@@ -458,7 +459,7 @@ const SeriesPage = () => {
                     <div className="flex items-start gap-4 flex-grow">
                       <div className="relative w-24 h-16 md:w-40 md:h-24 flex-shrink-0 rounded-lg overflow-hidden group cursor-pointer">
                         <img
-                          src={series.posterImage}
+                          src={episode.poster_url || series.posterImage}
                           alt={episode.title}
                           className="w-full h-full object-cover transition-all duration-300 group-hover:scale-110 group-hover:brightness-75"
                         />
