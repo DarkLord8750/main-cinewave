@@ -26,6 +26,7 @@ export interface Content {
   seasons?: Season[];
   cast: CastMember[];
   createdAt: string;
+  duration?: string;
 }
 
 export interface Season {
@@ -173,11 +174,12 @@ export const useContentStore = create<ContentState>()(
             videoUrl4k: content.video_url_4k,
             featured: content.featured,
             subtitle_urls: content.subtitle_urls,
-            seasons: (content.series?.[0]?.seasons || []).map(season => ({
+            duration: content.duration,
+            seasons: (content.series?.[0]?.seasons || []).map((season: any) => ({
               id: season.id,
               seriesId: season.series_id,
               seasonNumber: season.season_number,
-              episodes: (season.episodes || []).map(episode => ({
+              episodes: (season.episodes || []).map((episode: any) => ({
                 id: episode.id,
                 seasonId: episode.season_id,
                 episodeNumber: episode.episode_number,
@@ -195,8 +197,8 @@ export const useContentStore = create<ContentState>()(
                 subtitle_urls: episode.subtitle_urls
               }))
             })),
-            cast: content.content_cast
-              .sort((a: ContentCastMember, b: ContentCastMember) => a.order - b.order)
+            cast: content.content_cast?.
+              sort((a: ContentCastMember, b: ContentCastMember) => a.order - b.order)
               .map((cc: ContentCastMember) => ({
                 id: cc.cast_members.id,
                 name: cc.cast_members.name,
@@ -377,7 +379,7 @@ export const useContentStore = create<ContentState>()(
           // Handle series-specific data
           if (content.type === 'series' && content.seasons && content.seasons.length > 0) {
             // Add seasons and episodes
-            for (const season of content.seasons) {
+            for (const season of content.seasons ?? []) {
               // Create season
               const { data: createdSeason, error: seasonError } = await supabase
                 .from('seasons')
@@ -392,12 +394,13 @@ export const useContentStore = create<ContentState>()(
               if (!createdSeason) throw new Error('Failed to create season');
 
               // Add episodes for this season
-              if (season.episodes?.length > 0) {
-                const episodeInserts = season.episodes.map((episode) => ({
+              if (season.episodes && season.episodes.length > 0) {
+                const episodeInserts = season.episodes.map((episode: any) => ({
                   season_id: createdSeason.id,
                   episode_number: episode.episodeNumber,
                   title: episode.title,
                   duration: episode.duration,
+                  thumbnail: episode.thumbnail,
                   master_url: episode.master_url,
                   master_url_480p: episode.master_url_480p,
                   master_url_720p: episode.master_url_720p,
@@ -406,78 +409,23 @@ export const useContentStore = create<ContentState>()(
                   video_url_720p: episode.videoUrl720p,
                   video_url_1080p: episode.videoUrl1080p,
                   video_url_4k: episode.videoUrl4k,
-                  subtitle_urls: episode.subtitle_urls,
-                  thumbnail: episode.thumbnail
+                  subtitle_urls: episode.subtitle_urls
                 }));
-
                 const { error: episodesError } = await supabase
                   .from('episodes')
                   .insert(episodeInserts);
-
                 if (episodesError) throw episodesError;
               }
             }
           }
 
-          // Add genres
-          if (content.genre?.length > 0) {
-            const { data: genres, error: genresError } = await supabase
-              .from('genres')
-              .select('id, name')
-              .in('name', content.genre);
-
-            if (genresError) throw genresError;
-            if (genres && genres.length > 0) {
-              const genreRelations = genres.map(genre => ({
-                content_id: newContent.id,
-                genre_id: genre.id
-              }));
-
-              const { error: genreRelationError } = await supabase
-                .from('content_genres')
-                .insert(genreRelations);
-
-              if (genreRelationError) throw genreRelationError;
-            }
-          }
-
-          // After inserting content, handle cast
-          if (content.cast && content.cast.length > 0) {
-            for (let i = 0; i < content.cast.length; i++) {
-              const member = content.cast[i];
-              const upsertObj =
-                member.id && member.id.length === 36
-                  ? { id: member.id, name: member.name, photo_url: member.photoUrl }
-                  : { name: member.name, photo_url: member.photoUrl };
-              const { data: castMember, error: castMemberError } = await supabase
-                .from('cast_members')
-                .upsert(upsertObj, { onConflict: 'name' })
-                .select()
-                .single();
-              if (castMemberError) throw castMemberError;
-              const { error: contentCastError } = await supabase
-                .from('content_cast')
-                .insert({
-                  content_id: newContent.id,
-                  cast_member_id: castMember.id,
-                  role: member.role,
-                  order: i
-                });
-              if (contentCastError) throw contentCastError;
-            }
-          }
-
-          // Refresh content list
-          await get().fetchContents();
-
-          // Return the newly created content
+          // Return the new content object (with duration)
           return {
-            ...newContent,
-            genre: content.genre || [],
-            seasons: content.seasons || [],
-            cast: content.cast || [],
-            createdAt: new Date().toISOString()
-          } as Content;
+            ...content,
+            id: newContent.id,
+            cast: [],
+            createdAt: newContent.created_at,
+          };
         } catch (error) {
           console.error('Error adding content:', error);
           throw error;
@@ -592,8 +540,8 @@ export const useContentStore = create<ContentState>()(
                 if (!newSeason) throw new Error('Failed to create new season');
 
                 // Add episodes for new season
-                if (season.episodes?.length > 0) {
-                  const episodeInserts = season.episodes.map((episode) => ({
+                if (season.episodes && season.episodes.length > 0) {
+                  const episodeInserts = season.episodes.map((episode: any) => ({
                     season_id: newSeason.id,
                     episode_number: episode.episodeNumber,
                     title: episode.title,
