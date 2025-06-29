@@ -18,6 +18,16 @@ function shuffleArray<T>(array: T[]): T[] {
   return arr;
 }
 
+// Add WatchHistory interface for type safety
+interface WatchHistory {
+  lastWatched: string;
+  contentId: string;
+  watchTime?: number;
+  episodeId?: string;
+  duration?: string;
+  completed?: boolean;
+}
+
 const BrowsePage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const { contents, featuredContents, fetchContents, fetchFeaturedContents, getContentsByGenre, getMyListContents } = useContentStore();
@@ -92,14 +102,22 @@ const BrowsePage = () => {
   const myList = list === 'my-list' ? getMyListContents() : [];
 
   // Get continue watching content in chronological order
-  const continueWatchingHistory = getContinueWatching();
-  const continueWatchingContent = continueWatchingHistory
-    .map(history => {
-      const content = contents.find(content => content.id === history.contentId);
-      return content ? { ...content, lastWatched: history.lastWatched } : null;
+  const continueWatchingHistory: WatchHistory[] = getContinueWatching();
+  const continueWatchingContent: (Content & { lastWatched: string })[] = [];
+  const seenContentIds = new Set<string>();
+  continueWatchingHistory
+    .sort((a, b) => {
+      const aTime = a.lastWatched ? new Date(a.lastWatched).getTime() : 0;
+      const bTime = b.lastWatched ? new Date(b.lastWatched).getTime() : 0;
+      return bTime - aTime;
     })
-    .filter((content): content is Content & { lastWatched: string } => content !== null)
-    .sort((a, b) => new Date(b.lastWatched).getTime() - new Date(a.lastWatched).getTime());
+    .forEach(history => {
+      const content = contents.find(content => content.id === history.contentId);
+      if (content && !seenContentIds.has(content.id)) {
+        continueWatchingContent.push({ ...content, lastWatched: history.lastWatched });
+        seenContentIds.add(content.id);
+      }
+    });
 
   // Get random genres
   const randomGenres = useMemo(() => {
