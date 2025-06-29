@@ -16,6 +16,7 @@ import AdminDashboard from './pages/admin/Dashboard';
 import AdminContent from './pages/admin/Content';
 import AdminUsers from './pages/admin/Users';
 import AdminAnalytics from './pages/admin/analytics';
+import AdminCast from './pages/admin/cast';
 import NotFoundPage from './pages/NotFoundPage';
 import SeriesPage from './pages/SeriesPage';
 
@@ -75,6 +76,7 @@ function App() {
       <Route path="/admin" element={<AdminLayout />}>
         <Route index element={<AdminDashboard />} />
         <Route path="content" element={<AdminContent />} />
+        <Route path="cast" element={<AdminCast />} />
         <Route path="users" element={<AdminUsers />} />
         <Route path="analytics" element={<AdminAnalytics />} />
       </Route>
