@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Content, useContentStore } from '../../stores/contentStore';
 import { useGenreStore } from '../../stores/genreStore';
 import ContentCard from './ContentCard';
+import { useWatchHistoryStore } from '../../stores/watchHistoryStore';
 
 interface ContentRowProps {
   title?: string;
@@ -19,6 +20,7 @@ const ContentRow = ({ title, genre, contents: propContents, onPlay }: ContentRow
   const { contents: allContents, getContentsByGenre } = useContentStore();
   const { genres } = useGenreStore();
   const [randomGenre, setRandomGenre] = useState<string>('');
+  const { history } = useWatchHistoryStore();
 
   // Get random genre if not provided
   useEffect(() => {
@@ -147,18 +149,50 @@ const ContentRow = ({ title, genre, contents: propContents, onPlay }: ContentRow
               scrollBehavior: 'smooth'
             }}
           >
-            {contents.map((content) => (
-              <div 
-                key={content.id} 
-                className="flex-none relative snap-start"
-                style={{ 
-                  scrollSnapAlign: 'start',
-                  scrollSnapStop: 'always'
-                }}
-              >
-                <ContentCard content={content} onPlay={onPlay} />
-              </div>
-            ))}
+            {contents.map((content) => {
+              let _watch = undefined;
+              // If this is the Continue Watching row and content is a series, find the most recent episode watched
+              if (title === 'Continue Watching' && content.type === 'series' && content.seasons) {
+                // Find all history for this series
+                const seriesHistory = history.filter(h => h.contentId === content.id && h.episodeId);
+                // Find the most recently watched episode
+                const mostRecent = seriesHistory.sort((a, b) => new Date(b.lastWatched).getTime() - new Date(a.lastWatched).getTime())[0];
+                if (mostRecent) {
+                  // Find the episode object
+                  const episode = content.seasons.flatMap(s => s.episodes || []).find(e => e.id === mostRecent.episodeId);
+                  if (episode) {
+                    _watch = {
+                      ...mostRecent,
+                      duration: episode.duration,
+                      episode_number: episode.episodeNumber,
+                      season_number: content.seasons.find(s => s.id === episode.seasonId)?.seasonNumber,
+                      episode_title: episode.title
+                    };
+                  }
+                }
+              } else if (title === 'Continue Watching' && content.type === 'movie') {
+                // For movies, just use the history entry
+                const movieHistory = history.find(h => h.contentId === content.id && !h.episodeId);
+                if (movieHistory) {
+                  _watch = {
+                    ...movieHistory,
+                    duration: content.duration // Inject movie duration for progress bar
+                  };
+                }
+              }
+              return (
+                <div 
+                  key={content.id} 
+                  className="flex-none relative snap-start"
+                  style={{ 
+                    scrollSnapAlign: 'start',
+                    scrollSnapStop: 'always'
+                  }}
+                >
+                  <ContentCard content={{ ...content, _watch }} onPlay={onPlay} />
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
