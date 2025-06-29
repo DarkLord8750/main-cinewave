@@ -45,6 +45,7 @@ interface VideoPlayerProps {
   };
   startTime?: number;
   subtitleUrls?: { [key: string]: string };  // Add subtitle URLs prop
+  episodeId?: string; // <-- new
 }
 
 // Add audio track interface
@@ -191,6 +192,7 @@ const VideoPlayer = ({
   episodeInfo,
   startTime,
   subtitleUrls = {},  // Default to empty object
+  episodeId,
 }: VideoPlayerProps) => {
   // Navigation and State Management
   const navigate = useNavigate();
@@ -643,10 +645,10 @@ const VideoPlayer = ({
         try {
           // If video is completed (90-95%), reset the watch time to 0
           if (completed) {
-            await updateWatchTime(currentProfile.id, contentId, 0, true);
+            await updateWatchTime(currentProfile.id, contentId, 0, true, episodeId);
             console.log("Video completed, resetting watch time to 0");
           } else {
-            await updateWatchTime(currentProfile.id, contentId, Math.floor(time), false);
+            await updateWatchTime(currentProfile.id, contentId, Math.floor(time), false, episodeId);
             console.log(`Watch history updated: ${time}s, completed: ${completed}`);
           }
           } catch (error) {
@@ -659,7 +661,7 @@ const VideoPlayer = ({
       console.error("Error in watch history update:", error);
       setWatchHistoryUpdatePending(false);
     }
-  }, [currentProfile?.id, contentId, updateWatchTime]);
+  }, [currentProfile?.id, contentId, updateWatchTime, episodeId]);
 
   // Update handleTimeUpdate to use the new function
   const handleTimeUpdate = useCallback(() => {
@@ -831,7 +833,7 @@ const VideoPlayer = ({
     async function fetchLastWatched() {
       if (currentProfile?.id && contentId) {
             try {
-              const time = await getWatchTime(currentProfile.id, contentId);
+              const time = await getWatchTime(currentProfile.id, contentId, episodeId);
               if (isMounted && typeof time === "number" && time > 0) {
                 setLastWatchedTime(time);
             lastWatchTimeRef.current = time;
@@ -847,7 +849,7 @@ const VideoPlayer = ({
     return () => {
       isMounted = false;
     };
-  }, [currentProfile?.id, contentId, getWatchTime]);
+  }, [currentProfile?.id, contentId, episodeId, getWatchTime]);
 
   // Player Controls
   const togglePlay = useCallback(() => {
@@ -971,7 +973,7 @@ const VideoPlayer = ({
       setCurrentAutoQuality(autoLevel.height ? `${autoLevel.height}P` : (autoLevel.bitrate ? `${Math.round(autoLevel.bitrate/1000)}kbps` : 'Unknown'));
     } else {
       hlsInstance.currentLevel = parseInt(quality);
-      setCurrentQuality(quality);
+    setCurrentQuality(quality);
       setIsAutoQuality(false);
     }
     setShowQualityMenu(false);
@@ -983,8 +985,8 @@ const VideoPlayer = ({
     }
     // Restore subtitle track if needed
     if (currentSubtitleId && currentSubtitleId !== 'off' && subtitleManagerRef.current) {
-      subtitleManagerRef.current.setTrack(currentSubtitleId);
-    }
+        subtitleManagerRef.current.setTrack(currentSubtitleId);
+      }
     // Do not setCurrentQuality here; wait for LEVEL_SWITCHED
   };
 
@@ -1566,7 +1568,7 @@ const VideoPlayer = ({
         updateWatchHistory(completed ? 0 : currentTime, completed);
       }
     };
-  }, [currentProfile?.id, contentId, updateWatchHistory]);
+  }, [currentProfile?.id, contentId, episodeId, updateWatchHistory]);
 
   // Add click outside handler
   const handleClickOutside = useCallback((event: MouseEvent) => {
