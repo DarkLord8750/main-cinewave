@@ -14,6 +14,7 @@ const MoviePage = () => {
   const [similarMovies, setSimilarMovies] = useState<Content[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const [showFullCast, setShowFullCast] = useState(false);
 
   const params = useParams();
   const id = params.id as string | undefined;
@@ -383,8 +384,40 @@ const MoviePage = () => {
                             </div>
                           </div>
                         ))}
-                        {content.cast.length > 3 && (
-                          <span className="text-netflix-gray text-sm self-center">+{content.cast.length - 3} more</span>
+                        {!showFullCast && content.cast.length > 3 && (
+                          <button
+                            className="text-netflix-gray text-sm self-center underline hover:text-white transition"
+                            onClick={() => setShowFullCast(true)}
+                          >
+                            +{content.cast.length - 3} more
+                          </button>
+                        )}
+                        {showFullCast && (
+                          <>
+                            <div className="mt-3 flex flex-wrap gap-3">
+                              {content.cast.slice(3).map(member => (
+                                <div key={member.id} className="flex items-center gap-2">
+                                  {member.photoUrl && (
+                                    <img
+                                      src={member.photoUrl}
+                                      alt={member.name}
+                                      className="w-7 h-7 rounded-full object-cover ring-2 ring-white/20"
+                                    />
+                                  )}
+                                  <div>
+                                    <div className="font-medium text-sm">{member.name}</div>
+                                    <div className="text-netflix-gray text-xs">{member.role}</div>
+                                  </div>
+                                </div>
+                              ))}
+                              <button
+                                className="text-netflix-gray text-sm self-center underline hover:text-white transition ml-2"
+                                onClick={() => setShowFullCast(false)}
+                              >
+                                - less
+                              </button>
+                            </div>
+                          </>
                         )}
                       </div>
                     </div>
