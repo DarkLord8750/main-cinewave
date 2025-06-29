@@ -95,7 +95,7 @@ interface ContentState {
   removeFromMyList: (contentId: string) => void;
   isInMyList: (contentId: string) => boolean;
   getMyListContents: () => Content[];
-  addContent: (content: Omit<Content, 'id' | 'cast' | 'createdAt'>) => Promise<Content>;
+  addContent: (content: Omit<Content, 'id' | 'createdAt'>) => Promise<Content>;
   updateContent: (id: string, content: Partial<Content>) => Promise<void>;
   deleteContent: (id: string) => Promise<void>;
   addSeason: (contentId: string, season: Omit<Season, 'id' | 'episodes'>) => Promise<Season>;
@@ -330,7 +330,7 @@ export const useContentStore = create<ContentState>()(
         );
       },
 
-      addContent: async (content: Omit<Content, 'id' | 'cast' | 'createdAt'>) => {
+      addContent: async (content: Omit<Content, 'id' | 'createdAt'>) => {
         try {
           // Insert content
           const { data: newContent, error: contentError } = await supabase
@@ -488,6 +488,41 @@ export const useContentStore = create<ContentState>()(
             .eq('id', id);
 
           if (contentError) throw contentError;
+
+          // --- Handle cast updates ---
+          if (content.cast) {
+            // Remove all existing cast for this content
+            const { error: deleteCastError } = await supabase
+              .from('content_cast')
+              .delete()
+              .eq('content_id', id);
+            if (deleteCastError) throw deleteCastError;
+
+            // Upsert cast members and re-insert content_cast
+            for (let i = 0; i < content.cast.length; i++) {
+              const member = content.cast[i];
+              // Upsert cast member by name (if pre-added, use id)
+              const upsertObj =
+                member.id && member.id.length === 36
+                  ? { id: member.id, name: member.name, photo_url: member.photoUrl }
+                  : { name: member.name, photo_url: member.photoUrl };
+              const { data: castMember, error: castMemberError } = await supabase
+                .from('cast_members')
+                .upsert(upsertObj, { onConflict: 'name' })
+                .select()
+                .single();
+              if (castMemberError) throw castMemberError;
+              const { error: contentCastError } = await supabase
+                .from('content_cast')
+                .insert({
+                  content_id: id,
+                  cast_member_id: castMember.id,
+                  role: member.role,
+                  order: i
+                });
+              if (contentCastError) throw contentCastError;
+            }
+          }
 
           // Update series data if applicable
           if (content.type === 'series' && content.seasons) {
