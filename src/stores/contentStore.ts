@@ -419,11 +419,38 @@ export const useContentStore = create<ContentState>()(
             }
           }
 
-          // Return the new content object (with duration)
+          // Handle cast for movies and series
+          if (content.cast && content.cast.length > 0) {
+            for (let i = 0; i < content.cast.length; i++) {
+              const member = content.cast[i];
+              // Upsert cast member by name (if pre-added, use id)
+              const upsertObj =
+                member.id && member.id.length === 36
+                  ? { id: member.id, name: member.name, photo_url: member.photoUrl }
+                  : { name: member.name, photo_url: member.photoUrl };
+              const { data: castMember, error: castMemberError } = await supabase
+                .from('cast_members')
+                .upsert(upsertObj, { onConflict: 'name' })
+                .select()
+                .single();
+              if (castMemberError) throw castMemberError;
+              const { error: contentCastError } = await supabase
+                .from('content_cast')
+                .insert({
+                  content_id: newContent.id,
+                  cast_member_id: castMember.id,
+                  role: member.role,
+                  order: i
+                });
+              if (contentCastError) throw contentCastError;
+            }
+          }
+
+          // Return the new content object (with duration and cast)
           return {
             ...content,
             id: newContent.id,
-            cast: [],
+            cast: content.cast || [],
             createdAt: newContent.created_at,
           };
         } catch (error) {
@@ -443,6 +470,7 @@ export const useContentStore = create<ContentState>()(
               type: content.type,
               release_year: content.releaseYear,
               maturity_rating: content.maturityRating,
+              duration: content.duration,
               poster_image: content.posterImage,
               backdrop_image: content.backdropImage,
               trailer_url: content.trailerUrl,
@@ -596,34 +624,6 @@ export const useContentStore = create<ContentState>()(
                 .insert(genreRelations);
 
               if (insertGenresError) throw insertGenresError;
-            }
-          }
-
-          // Remove old cast links
-          await supabase.from('content_cast').delete().eq('content_id', id);
-          // Add new cast links
-          if (content.cast && content.cast.length > 0) {
-            for (let i = 0; i < content.cast.length; i++) {
-              const member = content.cast[i];
-              const upsertObj =
-                member.id && member.id.length === 36
-                  ? { id: member.id, name: member.name, photo_url: member.photoUrl }
-                  : { name: member.name, photo_url: member.photoUrl };
-              const { data: castMember, error: castMemberError } = await supabase
-                .from('cast_members')
-                .upsert(upsertObj, { onConflict: 'name' })
-                .select()
-                .single();
-              if (castMemberError) throw castMemberError;
-              const { error: contentCastError } = await supabase
-                .from('content_cast')
-                .insert({
-                  content_id: id,
-                  cast_member_id: castMember.id,
-                  role: member.role,
-                  order: i
-                });
-              if (contentCastError) throw contentCastError;
             }
           }
 
