@@ -26,7 +26,21 @@ const ContentCard = ({ content, onPlay, className }: ContentCardProps) => {
     ? history.find(h => h.contentId === content.id && h.profileId === currentProfile.id)
       : null);
 
-  const progressPercentage = watchProgress?.watchTime ? (watchProgress.watchTime / 7200) * 100 : 0;
+  // Parse duration in minutes (from '64m' or integer string)
+  let duration = 0;
+  if (watchProgress?.duration) {
+    const durStr = String(watchProgress.duration);
+    if (durStr.endsWith('m')) {
+      duration = parseInt(durStr.replace('m', ''), 10);
+    } else {
+      duration = parseInt(durStr, 10);
+    }
+  }
+  const durationSeconds = duration * 60;
+  const progress = watchProgress?.watchTime || 0;
+  const percent = durationSeconds > 0 ? Math.min(100, (progress / durationSeconds) * 100) : 0;
+  const remaining = durationSeconds > 0 ? Math.max(0, durationSeconds - progress) : 0;
+  const isWatched = watchProgress?.completed || (durationSeconds > 0 && progress >= durationSeconds - 5);
 
   const handlePlay = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -98,21 +112,36 @@ const ContentCard = ({ content, onPlay, className }: ContentCardProps) => {
               ))}
             </div>
 
-            {/* Watch Progress */}
-            {watchProgress && !watchProgress.completed && (
-              <div className="space-y-1">
-                <div className="relative h-1 bg-gray-600 rounded-full overflow-hidden">
-                  <div 
-                    className="absolute top-0 left-0 h-full bg-netflix-red rounded-full"
-                    style={{ width: `${Math.min(progressPercentage, 100)}%` }}
-                  />
-                </div>
-                <p className="text-xs text-white/70">
-                  {content.type === 'series' && watchProgress.episode_number
-                    ? `S${watchProgress.season_number || 1} E${watchProgress.episode_number} • ${watchProgress.episode_title || ''}`
-                    : ''}
-                  {formatTime(watchProgress.watchTime)} remaining
-                </p>
+            {/* Watch Progress and Meta Info */}
+            {watchProgress && (watchProgress.season_number || watchProgress.episode_number) && (
+              <div className="flex items-center gap-1 text-xs text-gray-400">
+                {watchProgress.season_number && (
+                  <span>S{watchProgress.season_number}</span>
+                )}
+                {watchProgress.episode_number && (
+                  <span>E{watchProgress.episode_number}</span>
+                )}
+                {watchProgress.episode_title && (
+                  <span className="ml-1 truncate max-w-[80px]" title={watchProgress.episode_title}>• {watchProgress.episode_title}</span>
+                )}
+              </div>
+            )}
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              {duration > 0 && (
+                <span className="flex items-center gap-1 text-xs text-gray-400"><span>⏱</span><span>{duration}m</span></span>
+              )}
+              {progress > 0 && !isWatched && durationSeconds > 0 && (
+                <span className="flex items-center gap-1 text-xs text-yellow-400"><span>⏳</span><span>{Math.ceil(remaining / 60)}m left</span></span>
+              )}
+              {isWatched && <span className="flex items-center gap-1 text-xs text-green-500"><span>✔</span><span>Watched</span></span>}
+            </div>
+            {progress > 0 && durationSeconds > 0 && !isWatched && (
+              <div className="relative h-2 w-full min-w-[60px] max-w-full sm:max-w-[120px] bg-gray-700 rounded-full shadow-inner mt-1">
+                <div
+                  className="h-2 bg-gradient-to-r from-red-500 to-red-700 rounded-full transition-all duration-500 shadow-lg"
+                  style={{ width: `${percent}%` }}
+                  title={`${Math.floor((progress / durationSeconds) * 100)}% watched`}
+                />
               </div>
             )}
           </div>
