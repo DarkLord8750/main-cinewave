@@ -303,6 +303,11 @@ const ContentManagement = () => {
       errors.genres = 'Please select at least one genre';
     }
 
+    // Cast role validation (use only castMembers)
+    if (castMembers.some(member => !member.role || member.role.trim() === '')) {
+      errors.cast = 'Each cast member must have a role.';
+    }
+
     // URL validation for required fields
     const requiredUrlFields = ['posterImage', 'backdropImage', 'trailerUrl'];
     requiredUrlFields.forEach(field => {
@@ -356,12 +361,7 @@ const ContentManagement = () => {
       featured: formData.get('featured') === 'on',
       genre: selectedGenres,
       duration: (modalMode === 'add-movie' || (selectedContent && selectedContent.type === 'movie')) ? formData.get('duration') as string : undefined,
-      cast: [
-        // Pre-selected from dropdown
-        ...allCastMembers.filter(m => selectedCastIds.includes(m.id)),
-        // Custom added
-        ...castMembers.filter(m => !allCastMembers.some(am => am.id === m.id) && m.name.trim() !== ''),
-      ],
+      cast: castMembers,
       subtitle_urls: subtitleUrls,
       // Only include video URLs for movies
       ...(type === 'movie' ? {
@@ -383,7 +383,7 @@ const ContentManagement = () => {
         await updateContent(selectedContent.id, contentData);
       } else if (modalMode.startsWith('add')) {
         // Add new content
-        await addContent(contentData);
+        await addContent({ ...contentData, cast: contentData.cast });
       }
       setIsModalOpen(false);
       setSelectedContent(null);
@@ -734,8 +734,9 @@ const ContentManagement = () => {
                             type="text"
                             value={member.role}
                             onChange={e => handleCastChange(member.id, 'role', e.target.value)}
-                            className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-[#E50914] focus:border-transparent"
+                            className={`mt-1 w-full px-4 py-2 border rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-[#E50914] focus:border-transparent ${!member.role ? 'border-red-500' : 'border-gray-300'}`}
                             placeholder="Character Name"
+                            required
                           />
                         </div>
                         <div className="col-span-3">
@@ -776,8 +777,9 @@ const ContentManagement = () => {
                             type="text"
                             value={member.role}
                             onChange={e => handleCastChange(member.id, 'role', e.target.value)}
-                            className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-[#E50914] focus:border-transparent"
+                            className={`mt-1 w-full px-4 py-2 border rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-[#E50914] focus:border-transparent ${!member.role ? 'border-red-500' : 'border-gray-300'}`}
                             placeholder="Character Name"
+                            required
                           />
                         </div>
                         <div className="col-span-3">
@@ -834,6 +836,9 @@ const ContentManagement = () => {
 
                 {validationErrors.submit && (
                   <p className="text-red-500 text-sm mt-2">{validationErrors.submit}</p>
+                )}
+                {validationErrors.cast && (
+                  <p className="text-red-500 text-sm">{validationErrors.cast}</p>
                 )}
               </form>
             )}
