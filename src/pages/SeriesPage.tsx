@@ -49,7 +49,8 @@ interface Episode {
 }
 
 const SeriesPage = () => {
-  const { id } = useParams();
+  const params = useParams();
+  const id = params.id as string | undefined;
   const navigate = useNavigate();
   const [series, setSeries] = useState<Series | null>(null);
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -65,6 +66,7 @@ const SeriesPage = () => {
   const [showSeasonDropdown, setShowSeasonDropdown] = useState(false);
   const [inMyList, setInMyList] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showFullCast, setShowFullCast] = useState(false);
 
   // My List logic
   const { addToMyList, removeFromMyList, isInMyList } = useContentStore();
@@ -403,7 +405,7 @@ const SeriesPage = () => {
                               <img
                                 src={member.photoUrl}
                                 alt={member.name}
-                                className="w-7 h-7 rounded-full object-cover"
+                                className="w-7 h-7 rounded-full object-cover ring-2 ring-white/20"
                               />
                             )}
                             <div>
@@ -412,8 +414,40 @@ const SeriesPage = () => {
                             </div>
                           </div>
                         ))}
-                        {series.cast.length > 3 && (
-                          <span className="text-netflix-gray text-sm self-center">+{series.cast.length - 3} more</span>
+                        {!showFullCast && series.cast.length > 3 && (
+                          <button
+                            className="text-netflix-gray text-sm self-center underline hover:text-white transition"
+                            onClick={() => setShowFullCast(true)}
+                          >
+                            +{series.cast.length - 3} more
+                          </button>
+                        )}
+                        {showFullCast && (
+                          <>
+                            <div className="mt-3 flex flex-wrap gap-3">
+                              {series.cast.slice(3).map(member => (
+                                <div key={member.id} className="flex items-center gap-2">
+                                  {member.photoUrl && (
+                                    <img
+                                      src={member.photoUrl}
+                                      alt={member.name}
+                                      className="w-7 h-7 rounded-full object-cover ring-2 ring-white/20"
+                                    />
+                                  )}
+                                  <div>
+                                    <div className="font-medium text-sm">{member.name}</div>
+                                    <div className="text-netflix-gray text-xs">{member.role}</div>
+                                  </div>
+                                </div>
+                              ))}
+                              <button
+                                className="text-netflix-gray text-sm self-center underline hover:text-white transition ml-2"
+                                onClick={() => setShowFullCast(false)}
+                              >
+                                - less
+                              </button>
+                            </div>
+                          </>
                         )}
                       </div>
                     </div>
