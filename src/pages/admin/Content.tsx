@@ -6,6 +6,7 @@ import SeriesManager from '../../components/admin/SeriesManager';
 import ContentTable from '../../components/admin/ContentTable';
 import { SubtitleManager } from '../../components/admin/SubtitleManager';
 import { Button } from '../../components/ui/button';
+import { createClient } from '@supabase/supabase-js';
 
 interface CastMember {
   id: string;
@@ -56,6 +57,8 @@ const ratings = [
   "Unrated",    // Not submitted for classification
   "Pending",    // Rating not yet assigned
 ];
+
+
 
 // Flexible config for video qualities (only for movies)
 const videoQualities = [
@@ -123,6 +126,11 @@ const renderInput = (
   );
 };
 
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
+
 const ContentManagement = () => {
   const { contents, addContent, updateContent, deleteContent, fetchContents, error: contentError } = useContentStore();
   const { genres, fetchGenres } = useGenreStore();
@@ -136,6 +144,8 @@ const ContentManagement = () => {
   const [showSeriesManager, setShowSeriesManager] = useState(false);
   const [castMembers, setCastMembers] = useState<CastMember[]>([]);
   const [subtitleUrls, setSubtitleUrls] = useState<{ [key: string]: string }>({});
+  const [allCastMembers, setAllCastMembers] = useState<CastMember[]>([]);
+  const [selectedCastIds, setSelectedCastIds] = useState<string[]>([]);
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -145,6 +155,16 @@ const ContentManagement = () => {
           fetchContents(),
           fetchGenres()
         ]);
+        // Fetch all cast members from Supabase
+        const { data, error } = await supabase.from('cast_members').select('*');
+        if (!error && data) {
+          setAllCastMembers(data.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            role: '',
+            photoUrl: c.photo_url || ''
+          })));
+        }
       } catch (error) {
         console.error('Failed to fetch initial data:', error);
       } finally {
@@ -162,8 +182,10 @@ const ContentManagement = () => {
   useEffect(() => {
     if (selectedContent) {
       setCastMembers(selectedContent.cast || []);
+      setSelectedCastIds([]);
     } else {
       setCastMembers([]);
+      setSelectedCastIds([]);
     }
   }, [selectedContent, isModalOpen]);
 
@@ -253,6 +275,21 @@ const ContentManagement = () => {
     setCastMembers(castMembers.map(member => member.id === id ? { ...member, [field]: value } : member));
   };
 
+  const handleSelectCast = (id: string) => {
+    if (!selectedCastIds.includes(id)) {
+      setSelectedCastIds([...selectedCastIds, id]);
+      const member = allCastMembers.find(c => c.id === id);
+      if (member && !castMembers.some(m => m.id === id)) {
+        setCastMembers([...castMembers, member]);
+      }
+    }
+  };
+
+  const handleRemoveSelectedCast = (id: string) => {
+    setSelectedCastIds(selectedCastIds.filter(cid => cid !== id));
+    setCastMembers(castMembers.filter(m => m.id !== id));
+  };
+
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -318,7 +355,13 @@ const ContentManagement = () => {
       trailerUrl: formData.get('trailerUrl') as string,
       featured: formData.get('featured') === 'on',
       genre: selectedGenres,
-      cast: castMembers.filter(member => member.name.trim() !== ''),
+      duration: (modalMode === 'add-movie' || (selectedContent && selectedContent.type === 'movie')) ? formData.get('duration') as string : undefined,
+      cast: [
+        // Pre-selected from dropdown
+        ...allCastMembers.filter(m => selectedCastIds.includes(m.id)),
+        // Custom added
+        ...castMembers.filter(m => !allCastMembers.some(am => am.id === m.id) && m.name.trim() !== ''),
+      ],
       subtitle_urls: subtitleUrls,
       // Only include video URLs for movies
       ...(type === 'movie' ? {
@@ -457,6 +500,14 @@ const ContentManagement = () => {
                       { label: "Release Year", name: "releaseYear", type: "number", required: true, min: 1900, max: new Date().getFullYear() + 5 },
                       selectedContent,
                       validationErrors
+                    )}
+                    {/* Duration input for movies only */}
+                    {(modalMode === 'add-movie' || (selectedContent && selectedContent.type === 'movie')) && (
+                      renderInput(
+                        { label: "Duration (e.g. 98m)", name: "duration", type: "text", required: true, placeholder: "e.g. 98m" },
+                        selectedContent,
+                        validationErrors
+                      )
                     )}
                   </div>
 
@@ -655,11 +706,62 @@ const ContentManagement = () => {
                 {/* Cast Section */}
                 <div className="bg-gray-50 p-6 rounded-lg space-y-6">
                   <h3 className="text-xl font-semibold text-gray-900 border-b pb-3">Cast</h3>
+                  {/* Dropdown for pre-added cast members */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Select from existing cast members</label>
+                    <select
+                      className="w-full px-3 py-2 border rounded-md text-black focus:outline-none focus:ring-2 focus:ring-[#E50914] focus:border-transparent"
+                      onChange={e => handleSelectCast(e.target.value)}
+                      value=""
+                      disabled={isLoading}
+                    >
+                      <option value="">-- Select Cast Member --</option>
+                      {allCastMembers.filter(m => !selectedCastIds.includes(m.id)).map(member => (
+                        <option key={member.id} value={member.id}>{member.name}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="space-y-4">
-                    {castMembers.map((member) => (
+                    {/* Show selected (pre-added) cast members */}
+                    {castMembers.filter(m => selectedCastIds.includes(m.id)).map(member => (
+                      <div key={member.id} className="grid grid-cols-12 gap-4 items-end bg-white p-4 rounded-lg shadow-sm">
+                        <div className="col-span-4 flex items-center gap-2">
+                          {member.photoUrl && <img src={member.photoUrl} alt={member.name} className="w-8 h-8 rounded-full object-cover" />}
+                          <span className="font-medium text-black">{member.name}</span>
+                        </div>
+                        <div className="col-span-4">
+                          <input
+                            type="text"
+                            value={member.role}
+                            onChange={e => handleCastChange(member.id, 'role', e.target.value)}
+                            className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-[#E50914] focus:border-transparent"
+                            placeholder="Character Name"
+                          />
+                        </div>
+                        <div className="col-span-3">
+                          <input
+                            type="url"
+                            value={member.photoUrl}
+                            onChange={e => handleCastChange(member.id, 'photoUrl', e.target.value)}
+                            className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-[#E50914] focus:border-transparent"
+                            placeholder="https://..."
+                          />
+                        </div>
+                        <div className="col-span-1 flex justify-end">
+                          <button 
+                            type="button" 
+                            onClick={() => handleRemoveSelectedCast(member.id)} 
+                            className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {/* Custom (inline) cast members */}
+                    {castMembers.filter(m => !selectedCastIds.includes(m.id)).map((member) => (
                       <div key={member.id} className="grid grid-cols-12 gap-4 items-end bg-white p-4 rounded-lg shadow-sm">
                         <div className="col-span-4">
-                          <label className="block text-sm font-medium text-gray-700">Name</label>
                           <input
                             type="text"
                             value={member.name}
@@ -670,7 +772,6 @@ const ContentManagement = () => {
                           />
                         </div>
                         <div className="col-span-4">
-                          <label className="block text-sm font-medium text-gray-700">Role</label>
                           <input
                             type="text"
                             value={member.role}
@@ -680,7 +781,6 @@ const ContentManagement = () => {
                           />
                         </div>
                         <div className="col-span-3">
-                          <label className="block text-sm font-medium text-gray-700">Photo URL</label>
                           <input
                             type="url"
                             value={member.photoUrl}
