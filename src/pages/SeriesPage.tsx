@@ -45,6 +45,7 @@ interface Episode {
   master_url_720p?: string;
   master_url_1080p?: string;
   subtitle_urls?: { [key: string]: string };
+  duration?: number;
 }
 
 const SeriesPage = () => {
@@ -68,7 +69,7 @@ const SeriesPage = () => {
   // My List logic
   const { addToMyList, removeFromMyList, isInMyList } = useContentStore();
   const { currentProfile } = useAuthStore();
-  const { history } = useWatchHistoryStore();
+  const { history, fetchHistory } = useWatchHistoryStore();
   const { getContentsByGenre } = useContentStore();
 
   useEffect(() => {
@@ -154,7 +155,7 @@ const SeriesPage = () => {
       setIsLoading(true);
       const { data: episodesData, error: episodesError } = await supabase
         .from('episodes')
-        .select('*')
+        .select('*, duration')
         .eq('season_id', selectedSeason.id)
         .order('episode_number');
       console.log('episodesData', episodesData, 'episodesError', episodesError);
@@ -210,6 +211,12 @@ const SeriesPage = () => {
     }
   }, [series, isInMyList]);
 
+  useEffect(() => {
+    if (currentProfile?.id && series?.id) {
+      fetchHistory(currentProfile.id, series.id);
+    }
+  }, [currentProfile?.id, series?.id, fetchHistory]);
+
   if (isLoading || !series) return <LoadingSpinner />;
 
   const handlePlay = (episode: Episode) => {
@@ -225,11 +232,15 @@ const SeriesPage = () => {
   };
 
   const currentEpisodeIndex = currentEpisode ? episodes.findIndex(e => e.id === currentEpisode.id) : 0;
-  const startTime = currentEpisode ? (history.find(h => h.contentId === currentEpisode.id)?.watchTime || 0) : 0;
+  const startTime = currentEpisode ? (history.find(h => h.episodeId === currentEpisode.id && h.profileId === currentProfile?.id)?.watchTime || 0) : 0;
 
   const handleClose = () => {
     setShowVideo(false);
     setIsFullscreen(false);
+    // Refresh history after playback
+    if (currentProfile?.id && series?.id) {
+      fetchHistory(currentProfile.id, series.id);
+    }
   };
 
   const handleMyList = () => {
@@ -255,7 +266,7 @@ const SeriesPage = () => {
 
   const watchProgress = currentEpisode && currentProfile
     ? history.find(
-        h => h.contentId === currentEpisode.id && h.profileId === currentProfile.id
+        h => h.episodeId === currentEpisode.id && h.profileId === currentProfile.id
       )
     : null;
 
@@ -297,6 +308,15 @@ const SeriesPage = () => {
     }
   };
 
+  function formatDuration(seconds: number): string {
+    if (!seconds || isNaN(seconds) || seconds <= 0) return '0:00';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  }
+
   return (
     <div className="min-h-screen bg-netflix-dark">
       {isFullscreen && showVideo && currentEpisode ? (
@@ -306,6 +326,7 @@ const SeriesPage = () => {
             description={currentEpisode.description}
             masterUrl={currentEpisode.master_url ?? ''}
             contentId={series.id}
+            episodeId={currentEpisode.id}
             onClose={handleClose}
             isFullScreen={true}
             autoPlay={true}
@@ -451,11 +472,25 @@ const SeriesPage = () => {
               </div>
 
               <div className="space-y-6">
-                {episodes.map((episode) => (
-                  <div
-                    key={episode.id}
-                    className="group flex items-center justify-between gap-4 p-4 bg-white/5 rounded-xl hover:bg-white/10 transition-all duration-200"
-                  >
+                {episodes.map((episode, idx) => {
+                  const episodeHistory = history.find(h => h.episodeId === episode.id && h.profileId === currentProfile?.id);
+                  const progress = episodeHistory ? (episodeHistory.watchTime || 0) : 0;
+                  const completed = episodeHistory ? episodeHistory.completed : false;
+                  let duration = 0;
+                  if (episode.duration) {
+                    const durStr = String(episode.duration);
+                    if (durStr.endsWith('m')) {
+                      duration = parseInt(durStr.replace('m', ''), 10);
+                    } else {
+                      duration = parseInt(durStr, 10);
+                    }
+                  }
+                  const durationSeconds = duration * 60;
+                  const percent = durationSeconds > 0 ? Math.min(100, (progress / durationSeconds) * 100) : 0;
+                  const remaining = durationSeconds > 0 ? Math.max(0, durationSeconds - progress) : 0;
+                  const isWatched = completed || (durationSeconds > 0 && progress >= durationSeconds - 5);
+                  return (
+                    <div key={episode.id} className="group flex flex-col md:flex-row items-stretch justify-between gap-4 p-4 bg-white/5 rounded-xl hover:bg-white/10 transition-all duration-200">
                     <div className="flex items-start gap-4 flex-grow">
                       <div className="relative w-24 h-16 md:w-40 md:h-24 flex-shrink-0 rounded-lg overflow-hidden group cursor-pointer">
                         <img
@@ -465,30 +500,52 @@ const SeriesPage = () => {
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300" />
                       </div>
-                      <div className="flex-grow">
-                        <div className="space-y-1">
+                        <div className="flex-grow flex flex-col justify-between">
+                          <div>
                           <h3 className="text-base font-semibold text-white">
                             {episode.episode_number}. {episode.title}
                           </h3>
-                          <p className="text-gray-400 text-sm line-clamp-2">
-                            {episode.description}
-                          </p>
-                          <div className="flex items-center gap-4 text-sm text-gray-400">
-                            <span>HD</span>
+                            <p className="text-gray-400 text-sm line-clamp-2">{episode.description}</p>
+                            <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-gray-400 mt-1 font-medium">
+                              <span className="flex items-center gap-1">
+                                <span className="inline-block">HD</span>
+                              </span>
+                              {duration > 0 && (
+                                <span className="flex items-center gap-1">
+                                  <span className="inline-block">⏱</span>
+                                  <span>{duration}m</span>
+                                </span>
+                              )}
+                              {progress > 0 && !isWatched && durationSeconds > 0 && (
+                                <span className="flex items-center gap-1 text-yellow-400">
+                                  <span className="inline-block">⏳</span>
+                                  <span>{Math.ceil(remaining / 60)}m left</span>
+                                </span>
+                              )}
+                              {isWatched && (
+                                <span className="flex items-center gap-1 text-green-500 ml-2">
+                                  <span className="inline-block">✔</span>
+                                  <span>Watched</span>
+                                </span>
+                              )}
+                            </div>
+                            {progress > 0 && durationSeconds > 0 && !isWatched && (
+                              <div className="flex w-full justify-start mt-2">
+                                <div className="relative h-2 w-full min-w-[80px] max-w-full sm:max-w-[300px] bg-gray-700 rounded-full shadow-inner">
+                                  <div
+                                    className="h-2 bg-gradient-to-r from-red-500 to-red-700 rounded-full transition-all duration-500 shadow-lg"
+                                    style={{ width: `${percent}%` }}
+                                    title={`${Math.floor((progress / durationSeconds) * 100)}% watched`}
+                                  />
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => handlePlay(episode)}
-                        className="group relative flex items-center justify-center w-10 h-10 bg-netflix-red hover:bg-red-700 rounded-lg text-white transition-all duration-300 shadow-lg hover:shadow-red-500/30 overflow-hidden"
-                      >
-                        <div className="absolute inset-0 bg-gradient-to-r from-red-600 to-red-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                        <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-red-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                        <div className="relative">
+                      <div className="flex flex-row items-center gap-2 sm:gap-3 justify-end mt-2 sm:mt-0">
+                        <button onClick={() => handlePlay(episode)} className="group relative flex items-center justify-center w-10 h-10 bg-netflix-red hover:bg-red-700 rounded-lg text-white transition-all duration-300 shadow-lg hover:shadow-red-500/30 overflow-hidden">
                           <Play className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
-                        </div>
                       </button>
                       <div className="relative">
                         <button
@@ -557,7 +614,8 @@ const SeriesPage = () => {
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -644,3 +702,4 @@ const SeriesPage = () => {
 };
 
 export default SeriesPage;
+
