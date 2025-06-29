@@ -15,7 +15,8 @@ const MoviePage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
 
-  const { id } = useParams<{ id: string }>();
+  const params = useParams();
+  const id = params.id as string | undefined;
   const { currentProfile } = useAuthStore();
   const { fetchHistory, history } = useWatchHistoryStore();
   const { 
@@ -170,6 +171,22 @@ const MoviePage = () => {
     : null;
   const startTime = watchProgress?.watchTime || 0;
 
+  // Progress bar logic for movie
+  let duration = 0;
+  if (content.duration) {
+    const durStr = String(content.duration);
+    if (durStr.endsWith('m')) {
+      duration = parseInt(durStr.replace('m', ''), 10);
+    } else {
+      duration = parseInt(durStr, 10);
+    }
+  }
+  const durationSeconds = duration * 60;
+  const progress = watchProgress?.watchTime || 0;
+  const percent = durationSeconds > 0 ? Math.min(100, (progress / durationSeconds) * 100) : 0;
+  const remaining = durationSeconds > 0 ? Math.max(0, durationSeconds - progress) : 0;
+  const isWatched = watchProgress?.completed || (durationSeconds > 0 && progress >= durationSeconds - 5);
+
   return (
     <div className="min-h-screen bg-netflix-dark">
       {isFullscreen ? (
@@ -229,7 +246,6 @@ const MoviePage = () => {
                   <span className="px-2 py-0.5 border rounded bg-white/10 backdrop-blur-sm">HD</span>
                   <span className="text-netflix-red font-medium">New</span>
                 </div>
-
                 {/* Action Buttons */}
                 <div className="flex flex-col sm:flex-row gap-3 mb-6 w-full">
                   <button
@@ -320,6 +336,27 @@ const MoviePage = () => {
                     )}
                   </div>
                 </div>
+                {/* Progress Bar & Remaining Time */}
+                {duration > 0 && watchProgress && (
+                  <div className="mb-4">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="flex items-center gap-1 text-xs text-gray-400"><span>⏱</span><span>{duration}m</span></span>
+                      {progress > 0 && !isWatched && durationSeconds > 0 && (
+                        <span className="flex items-center gap-1 text-xs text-yellow-400"><span>⏳</span><span>{Math.ceil(remaining / 60)}m left</span></span>
+                      )}
+                      {isWatched && <span className="flex items-center gap-1 text-xs text-green-500"><span>✔</span><span>Watched</span></span>}
+                    </div>
+                    {progress > 0 && durationSeconds > 0 && !isWatched && (
+                      <div className="relative h-2 w-full min-w-[60px] max-w-[200px] bg-gray-700 rounded-full shadow-inner">
+                        <div
+                          className="h-2 bg-gradient-to-r from-red-500 to-red-700 rounded-full transition-all duration-500 shadow-lg"
+                          style={{ width: `${percent}%` }}
+                          title={`${Math.floor((progress / durationSeconds) * 100)}% watched`}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <p className="text-white text-sm sm:text-base md:text-lg mb-6 md:mb-8 line-clamp-3 sm:line-clamp-none">
                   {content.description}
